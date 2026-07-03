@@ -8,6 +8,7 @@ import {
   type Part,
 } from "../score/types";
 
+
 const TONIC = 0;
 const SUPERTONIC = 1;
 const MEDIANT = 2;
@@ -66,9 +67,9 @@ function diatonicPcs(key: KeySignature): Set<number> {
   return new Set(steps.map((s) => (key.tonicPc + s) % 12));
 }
 
-function beatStrength(tick: number): number {
-  if (tick % 16 === 0) return 2.0;
-  if (tick % 8 === 0) return 1.5;
+function beatStrength(tick: number, ticksPerMeasure: number): number {
+  if (tick % ticksPerMeasure === 0) return 2.0;
+  if (ticksPerMeasure % 8 === 0 && tick % 8 === 0) return 1.5;
   if (tick % 4 === 0) return 1.2;
   return 1.0;
 }
@@ -102,8 +103,9 @@ export function harmonize(
   parts: Part[],
   key: KeySignature,
   totalTicks: number,
+  ticksPerMeasure: number = TICKS_PER_MEASURE,
 ): ChordSymbol[] {
-  const measures = Math.ceil(totalTicks / TICKS_PER_MEASURE);
+  const measures = Math.ceil(totalTicks / ticksPerMeasure);
   if (measures === 0) return [];
   const states = key.mode === "major" ? MAJOR_STATES : MINOR_STATES;
   const diatonic = diatonicPcs(key);
@@ -112,8 +114,8 @@ export function harmonize(
   // Emission scores per measure per state.
   const logE: number[][] = [];
   for (let m = 0; m < measures; m++) {
-    const mStart = m * TICKS_PER_MEASURE;
-    const mEnd = mStart + TICKS_PER_MEASURE;
+    const mStart = m * ticksPerMeasure;
+    const mEnd = mStart + ticksPerMeasure;
     const row: number[] = [];
     for (const state of states) {
       const tones = chordTones(state, key.tonicPc);
@@ -123,7 +125,7 @@ export function harmonize(
         const overlap =
           Math.min(mEnd, n.startTick + n.durationTicks) - Math.max(mStart, n.startTick);
         if (overlap <= 0) continue;
-        const w = overlap * beatStrength(n.startTick);
+        const w = overlap * beatStrength(n.startTick, ticksPerMeasure);
         total += w;
         const pc = ((n.midi % 12) + 12) % 12;
         if (tones.has(pc)) covered += w;
@@ -177,8 +179,8 @@ export function harmonize(
   return path.map((stateIdx, m) => {
     const state = states[stateIdx];
     return {
-      startTick: m * TICKS_PER_MEASURE,
-      durationTicks: TICKS_PER_MEASURE,
+      startTick: m * ticksPerMeasure,
+      durationTicks: ticksPerMeasure,
       rootPc: (key.tonicPc + state.degree) % 12,
       quality: state.quality,
       label: chordLabel(state, key),

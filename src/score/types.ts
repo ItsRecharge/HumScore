@@ -1,7 +1,17 @@
 /** Ticks per quarter note. 1 tick = one sixteenth. */
 export const DIVISIONS = 4;
-/** 4/4 only in v1. */
+/** Ticks per measure in the default 4/4. */
 export const TICKS_PER_MEASURE = 16;
+
+export interface TimeSignature {
+  beats: 2 | 3 | 4;
+  beatType: 4;
+}
+
+/** Ticks per measure for a given meter (quarter-note beats only). */
+export function measureTicks(timeSig: TimeSignature): number {
+  return timeSig.beats * DIVISIONS;
+}
 
 /**
  * The seam between the audio (signal) domain and the theory (symbolic)
@@ -58,6 +68,8 @@ export interface Part {
   /** Phase offset (seconds) used when this part was quantized. */
   phaseSec: number;
   notes: QuantizedNote[];
+  muted?: boolean;
+  solo?: boolean;
 }
 
 export interface Score {
@@ -67,7 +79,7 @@ export interface Score {
   tempoConfidence: number;
   key: KeySignature;
   keySource: "inferred" | "manual";
-  timeSig: { beats: 4; beatType: 4 };
+  timeSig: TimeSignature;
   parts: Part[];
   chords: ChordSymbol[];
   chordsEnabled: boolean;

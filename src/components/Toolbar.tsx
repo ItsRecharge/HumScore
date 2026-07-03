@@ -1,13 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { downloadMidi, downloadMusicXML } from "../export/downloads";
-import { Player } from "../playback/player";
+import { player } from "../playback/player";
 import {
   PITCH_CLASS_NAMES_FLAT,
   PITCH_CLASS_NAMES_SHARP,
   type Mode,
+  type TimeSignature,
 } from "../score/types";
 import { fifthsFor } from "../theory/key";
-import { useScore, useScoreDispatch } from "../state/store";
+import { useHistoryInfo, useScore, useScoreDispatch } from "../state/store";
 
 function keyName(tonicPc: number, mode: Mode): string {
   const fifths = fifthsFor(tonicPc, mode);
@@ -22,68 +23,101 @@ for (const mode of ["major", "minor"] as const) {
   }
 }
 
+const MIN_BPM = 40;
+const MAX_BPM = 220;
+
 export default function Toolbar() {
   const score = useScore();
   const dispatch = useScoreDispatch();
+  const { canUndo, canRedo } = useHistoryInfo();
   const [bpmInput, setBpmInput] = useState(String(score.bpm));
-  const [playing, setPlaying] = useState(false);
-  const playerRef = useRef<Player | null>(null);
+  const [playing, setPlaying] = useState(player.isPlaying);
+  const tapTimesRef = useRef<number[]>([]);
 
   useEffect(() => setBpmInput(String(score.bpm)), [score.bpm]);
+  useEffect(() => player.onStateChange(setPlaying), []);
 
   // Stop playback whenever the score changes underneath it.
   useEffect(() => {
-    if (playerRef.current?.isPlaying) {
-      playerRef.current.stop();
-      setPlaying(false);
-    }
+    if (player.isPlaying) player.stop();
   }, [score]);
-
-  useEffect(() => {
-    return () => {
-      playerRef.current?.dispose();
-      playerRef.current = null;
-    };
-  }, []);
 
   const hasParts = score.parts.length > 0;
   const bpmValue = Number(bpmInput);
-  const bpmValid = Number.isFinite(bpmValue) && bpmValue >= 40 && bpmValue <= 220;
+  const bpmValid = Number.isFinite(bpmValue) && bpmValue >= MIN_BPM && bpmValue <= MAX_BPM;
   const bpmDirty = bpmValid && Math.round(bpmValue) !== score.bpm;
   const tempoUncertain =
     hasParts && score.bpmSource === "inferred" && score.tempoConfidence < 0.15;
 
-  const togglePlay = async () => {
-    if (!playerRef.current) playerRef.current = new Player();
-    const player = playerRef.current;
-    if (playing) {
+  const togglePlay = useCallback(async () => {
+    if (player.isPlaying) {
       player.stop();
-      setPlaying(false);
-    } else {
-      player.load(score);
-      setPlaying(true);
-      await player.play(() => setPlaying(false));
+    } else if (score.parts.length > 0) {
+      await player.play(score);
     }
+  }, [score]);
+
+  // Keyboard shortcuts: Space = play/stop, Ctrl+Z / Ctrl+Y = undo/redo.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const typing =
+        target && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName);
+      if (e.code === "Space" && !typing) {
+        e.preventDefault();
+        void togglePlay();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !typing) {
+        e.preventDefault();
+        dispatch({ type: e.shiftKey ? "REDO" : "UNDO" });
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y" && !typing) {
+        e.preventDefault();
+        dispatch({ type: "REDO" });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dispatch, togglePlay]);
+
+  const tapTempo = () => {
+    const now = performance.now();
+    const taps = tapTimesRef.current;
+    if (taps.length > 0 && now - taps[taps.length - 1] > 2000) taps.length = 0;
+    taps.push(now);
+    if (taps.length > 8) taps.shift();
+    if (taps.length >= 2) {
+      const intervals = taps.slice(1).map((t, i) => t - taps[i]);
+      const avg = intervals.reduce((s, x) => s + x, 0) / intervals.length;
+      const bpm = Math.round(60000 / avg);
+      setBpmInput(String(Math.max(MIN_BPM, Math.min(MAX_BPM, bpm))));
+    }
+  };
+
+  const scaleBpm = (factor: number) => {
+    const next = Math.round(score.bpm * factor);
+    if (next >= MIN_BPM && next <= MAX_BPM) dispatch({ type: "SET_BPM", bpm: next });
   };
 
   const keyValue =
     score.keySource === "inferred" ? "auto" : `${score.key.tonicPc}:${score.key.mode}`;
 
+  const smallBtn =
+    "rounded-lg border border-slate-300 px-2 py-1 text-xs font-medium text-slate-600 enabled:hover:bg-slate-50 disabled:opacity-40";
+
   return (
-    <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-slate-200 bg-white px-4">
-      <h1 className="mr-2 text-lg font-bold tracking-tight text-indigo-700">
+    <header className="sticky top-0 z-10 flex h-14 items-center gap-2.5 border-b border-slate-200 bg-white px-4">
+      <h1 className="mr-1 text-lg font-bold tracking-tight text-indigo-700">
         Hum<span className="text-slate-800">Score</span>
       </h1>
 
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1">
         <label htmlFor="bpm" className="text-xs font-medium text-slate-500">
           BPM
         </label>
         <input
           id="bpm"
           type="number"
-          min={40}
-          max={220}
+          min={MIN_BPM}
+          max={MAX_BPM}
           value={bpmInput}
           onChange={(e) => setBpmInput(e.target.value)}
           disabled={!hasParts}
@@ -91,20 +125,29 @@ export default function Toolbar() {
         />
         {tempoUncertain && (
           <span
-            title="Tempo detection was uncertain — consider setting the BPM manually."
-            className="h-2 w-2 rounded-full bg-amber-400"
+            title="Tempo detection was uncertain — consider setting the BPM manually (try Tap), or ÷2/×2 if it's off by an octave."
+            className="h-2 w-2 shrink-0 rounded-full bg-amber-400"
           />
         )}
         <button
           onClick={() => dispatch({ type: "SET_BPM", bpm: Math.round(bpmValue) })}
           disabled={!bpmDirty}
-          className="rounded-lg border border-slate-300 px-2 py-1 text-xs font-medium text-slate-600 enabled:hover:bg-slate-50 disabled:opacity-40"
+          className={smallBtn}
         >
           Re-quantize
         </button>
+        <button onClick={tapTempo} disabled={!hasParts} className={smallBtn} title="Tap the beat to measure a tempo">
+          Tap
+        </button>
+        <button onClick={() => scaleBpm(0.5)} disabled={!hasParts || score.bpm / 2 < MIN_BPM} className={smallBtn} title="Halve the tempo (fixes double-time detection)">
+          ÷2
+        </button>
+        <button onClick={() => scaleBpm(2)} disabled={!hasParts || score.bpm * 2 > MAX_BPM} className={smallBtn} title="Double the tempo (fixes half-time detection)">
+          ×2
+        </button>
       </div>
 
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1">
         <label htmlFor="key" className="text-xs font-medium text-slate-500">
           Key
         </label>
@@ -136,6 +179,21 @@ export default function Toolbar() {
         </select>
       </div>
 
+      <select
+        aria-label="Time signature"
+        value={score.timeSig.beats}
+        disabled={!hasParts}
+        onChange={(e) =>
+          dispatch({ type: "SET_TIME_SIG", beats: Number(e.target.value) as TimeSignature["beats"] })
+        }
+        className="rounded-lg border border-slate-300 px-2 py-1 text-sm disabled:bg-slate-50 disabled:text-slate-400"
+        title="Time signature"
+      >
+        <option value={4}>4/4</option>
+        <option value={3}>3/4</option>
+        <option value={2}>2/4</option>
+      </select>
+
       <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-500">
         <input
           type="checkbox"
@@ -148,9 +206,26 @@ export default function Toolbar() {
 
       <div className="ml-auto flex items-center gap-2">
         <button
+          onClick={() => dispatch({ type: "UNDO" })}
+          disabled={!canUndo}
+          className={smallBtn}
+          title="Undo (Ctrl+Z)"
+        >
+          ↩
+        </button>
+        <button
+          onClick={() => dispatch({ type: "REDO" })}
+          disabled={!canRedo}
+          className={smallBtn}
+          title="Redo (Ctrl+Y)"
+        >
+          ↪
+        </button>
+        <button
           onClick={() => void togglePlay()}
           disabled={!hasParts}
           className="rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white enabled:hover:bg-indigo-700 disabled:opacity-40"
+          title="Play/stop (Space)"
         >
           {playing ? "■ Stop" : "▶ Play"}
         </button>

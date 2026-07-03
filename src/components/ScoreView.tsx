@@ -1,7 +1,27 @@
 import { OpenSheetMusicDisplay } from "opensheetmusicdisplay";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { player } from "../playback/player";
 import { toMusicXML } from "../score/musicxml";
 import { useScore } from "../state/store";
+
+/** Advance the OSMD cursor to the entry at/after the given whole-note time. */
+function seekCursor(osmd: OpenSheetMusicDisplay, targetWholeNotes: number): void {
+  const cursor = osmd.cursor;
+  if (!cursor) return;
+  let guard = 0;
+  while (guard++ < 500) {
+    // Property casing has varied across OSMD versions — probe defensively.
+    const it = cursor.iterator as unknown as {
+      EndReached?: boolean;
+      currentTimeStamp?: { RealValue?: number };
+      CurrentEnrolledTimestamp?: { RealValue?: number };
+    };
+    if (!it || it.EndReached) break;
+    const v = it.currentTimeStamp?.RealValue ?? it.CurrentEnrolledTimestamp?.RealValue;
+    if (v === undefined || v >= targetWholeNotes) break;
+    cursor.next();
+  }
+}
 
 export default function ScoreView() {
   const score = useScore();
@@ -10,6 +30,7 @@ export default function ScoreView() {
   // OSMD corrupts state if load() calls overlap — serialize them.
   const loadChainRef = useRef<Promise<void>>(Promise.resolve());
   const [renderError, setRenderError] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(player.isPlaying);
 
   const xml = useMemo(
     () => (score.parts.length > 0 ? toMusicXML(score) : null),
@@ -46,6 +67,41 @@ export default function ScoreView() {
         setRenderError(err instanceof Error ? err.message : String(err));
       });
   }, [xml]);
+
+  useEffect(() => player.onStateChange(setPlaying), []);
+
+  // Playback cursor: follow the transport with a rAF loop.
+  useEffect(() => {
+    const osmd = osmdRef.current;
+    if (!playing || !osmd) return;
+    try {
+      osmd.cursor?.reset();
+      osmd.cursor?.show();
+    } catch {
+      return; // cursor unavailable — skip silently
+    }
+    let raf = 0;
+    const loop = () => {
+      const tick = player.positionTick;
+      if (tick !== null) {
+        try {
+          seekCursor(osmd, tick / 16); // 1 tick = 1/16 whole note
+        } catch {
+          return; // stop following on any cursor error
+        }
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      cancelAnimationFrame(raf);
+      try {
+        osmd.cursor?.hide();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [playing]);
 
   return (
     <main className="relative flex-1 overflow-auto bg-white">

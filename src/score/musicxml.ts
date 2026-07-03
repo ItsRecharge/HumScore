@@ -1,12 +1,13 @@
 import { keySignatureAlter, spellPitch } from "../theory/key";
 import {
   DIVISIONS,
-  TICKS_PER_MEASURE,
+  measureTicks,
   type ChordSymbol,
   type KeySignature,
   type Part,
   type QuantizedNote,
   type Score,
+  type TimeSignature,
 } from "./types";
 
 export interface DurationComponent {
@@ -63,9 +64,13 @@ interface MeasureItem {
 }
 
 /** Slice a part's notes + implicit rests into per-measure items with tie flags. */
-function measureItems(notes: QuantizedNote[], measureIndex: number): MeasureItem[] {
-  const mStart = measureIndex * TICKS_PER_MEASURE;
-  const mEnd = mStart + TICKS_PER_MEASURE;
+function measureItems(
+  notes: QuantizedNote[],
+  measureIndex: number,
+  ticksPerMeasure: number,
+): MeasureItem[] {
+  const mStart = measureIndex * ticksPerMeasure;
+  const mEnd = mStart + ticksPerMeasure;
   const items: MeasureItem[] = [];
   let cursor = mStart;
   for (const n of notes) {
@@ -95,14 +100,15 @@ function noteXml(
   item: MeasureItem,
   key: KeySignature,
   measureAlters: Map<string, number>,
+  ticksPerMeasure: number,
 ): string[] {
   const lines: string[] = [];
   if (item.midi === null) {
     // Whole-measure rest.
-    if (item.durationTicks === TICKS_PER_MEASURE) {
+    if (item.durationTicks === ticksPerMeasure) {
       lines.push("      <note>");
       lines.push('        <rest measure="yes"/>');
-      lines.push(`        <duration>${TICKS_PER_MEASURE}</duration>`);
+      lines.push(`        <duration>${ticksPerMeasure}</duration>`);
       lines.push("      </note>");
       return lines;
     }
@@ -166,7 +172,7 @@ function harmonyXml(chord: ChordSymbol, key: KeySignature): string[] {
   ];
 }
 
-function attributesXml(part: Part, key: KeySignature): string[] {
+function attributesXml(part: Part, key: KeySignature, timeSig: TimeSignature): string[] {
   const clef = part.clef === "bass" ? ["F", "4"] : ["G", "2"];
   return [
     "      <attributes>",
@@ -176,8 +182,8 @@ function attributesXml(part: Part, key: KeySignature): string[] {
     `          <mode>${key.mode}</mode>`,
     "        </key>",
     "        <time>",
-    "          <beats>4</beats>",
-    "          <beat-type>4</beat-type>",
+    `          <beats>${timeSig.beats}</beats>`,
+    `          <beat-type>${timeSig.beatType}</beat-type>`,
     "        </time>",
     "        <clef>",
     `          <sign>${clef[0]}</sign>`,
@@ -202,7 +208,8 @@ function tempoXml(bpm: number): string[] {
 }
 
 export function toMusicXML(score: Score): string {
-  const measures = Math.max(1, Math.ceil(score.totalTicks / TICKS_PER_MEASURE));
+  const tpm = measureTicks(score.timeSig);
+  const measures = Math.max(1, Math.ceil(score.totalTicks / tpm));
   const lines: string[] = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">',
@@ -224,17 +231,17 @@ export function toMusicXML(score: Score): string {
     for (let m = 0; m < measures; m++) {
       lines.push(`    <measure number="${m + 1}">`);
       if (m === 0) {
-        lines.push(...attributesXml(part, score.key));
+        lines.push(...attributesXml(part, score.key, score.timeSig));
         if (partIdx === 0) lines.push(...tempoXml(score.bpm));
       }
       const measureAlters = new Map<string, number>();
-      for (const item of measureItems(part.notes, m)) {
+      for (const item of measureItems(part.notes, m, tpm)) {
         if (partIdx === 0 && score.chordsEnabled) {
           for (const chord of score.chords) {
             if (chord.startTick === item.startTick) lines.push(...harmonyXml(chord, score.key));
           }
         }
-        lines.push(...noteXml(item, score.key, measureAlters));
+        lines.push(...noteXml(item, score.key, measureAlters, tpm));
       }
       lines.push("    </measure>");
     }

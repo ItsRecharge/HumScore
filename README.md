@@ -10,12 +10,19 @@ API keys, no ML model downloads.
 2. HumScore **transcribes** the hum into notes (pitch detection via the
    McLeod pitch method), **infers the tempo and key**, and **quantizes** the
    rhythm onto a sixteenth grid.
-3. Your **first part establishes the grid**; every later part is quantized
-   against it.
+3. Your **first part establishes the grid**; when you record later parts you
+   get a **click count-in and hear the existing parts as a backing track**
+   (🎧 headphones recommended), so overdubs stay in sync.
 4. Rule-based **harmonization** (Viterbi over diatonic triads) adds chord
    symbols — no LLM involved.
-5. The score renders as engraved notation, plays back in the browser, and
-   exports as **MusicXML** and **MIDI**.
+5. The score renders as engraved notation with a **playback cursor**, plays
+   back in the browser, and exports as **MusicXML** and **MIDI**.
+
+Also on board: per-part **mute/solo**, note editing (pitch nudge, duration,
+delete, click-to-audition), a piano-roll preview of every take before you
+accept it, **undo/redo** (Ctrl+Z / Ctrl+Y), Space to play/stop, **tap tempo**
+and ÷2/×2 tempo-octave fixes, **4/4, 3/4 and 2/4** time signatures, and
+autosave to localStorage so a refresh never loses your score.
 
 If tempo detection is uncertain (free-form/rubato humming is genuinely hard),
 an amber dot appears next to the BPM — set it manually and hit *Re-quantize*;

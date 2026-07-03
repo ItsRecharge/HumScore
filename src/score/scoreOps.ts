@@ -3,7 +3,7 @@ import { fifthsFor, inferKey } from "../theory/key";
 import { quantize } from "../theory/quantize";
 import { fitPhase, inferTempo } from "../theory/tempo";
 import {
-  TICKS_PER_MEASURE,
+  measureTicks,
   type Clef,
   type KeySignature,
   type Mode,
@@ -11,6 +11,7 @@ import {
   type PartRole,
   type RawNote,
   type Score,
+  type TimeSignature,
 } from "./types";
 
 export function emptyScore(): Score {
@@ -34,31 +35,32 @@ function clefFor(rawNotes: RawNote[]): Clef {
   return mean < 57 ? "bass" : "treble";
 }
 
-function computeTotalTicks(parts: Part[]): number {
+function computeTotalTicks(parts: Part[], timeSig: TimeSignature): number {
   let maxEnd = 0;
   for (const p of parts) {
     for (const n of p.notes) {
       maxEnd = Math.max(maxEnd, n.startTick + n.durationTicks);
     }
   }
-  return Math.ceil(maxEnd / TICKS_PER_MEASURE) * TICKS_PER_MEASURE;
+  const tpm = measureTicks(timeSig);
+  return Math.ceil(maxEnd / tpm) * tpm;
 }
 
 /** Re-derive key (if inferred), chords and length after any note change. */
 function recompute(score: Score): Score {
-  const totalTicks = computeTotalTicks(score.parts);
+  const totalTicks = computeTotalTicks(score.parts, score.timeSig);
   const key =
     score.keySource === "inferred" && score.parts.length > 0
       ? inferKey(score.parts.flatMap((p) => p.notes))
       : score.key;
-  const chords = harmonize(score.parts, key, totalTicks);
+  const chords = harmonize(score.parts, key, totalTicks, measureTicks(score.timeSig));
   return { ...score, key, chords, totalTicks };
 }
 
-let partCounter = 0;
 function nextPartId(): string {
-  partCounter += 1;
-  return `part-${partCounter}-${partCounter.toString(36)}`;
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `part-${Math.random().toString(36).slice(2)}`;
 }
 
 /**
@@ -165,22 +167,49 @@ export function setChordsEnabled(score: Score, enabled: boolean): Score {
   return { ...score, chordsEnabled: enabled };
 }
 
-/** Nudge a quantized note's pitch by semitones, or delete it. */
+/** Re-barring only — the sixteenth grid itself is meter-independent. */
+export function setTimeSig(score: Score, beats: TimeSignature["beats"]): Score {
+  return recompute({ ...score, timeSig: { beats, beatType: 4 } });
+}
+
+export function togglePartMuted(score: Score, partId: string): Score {
+  return {
+    ...score,
+    parts: score.parts.map((p) => (p.id === partId ? { ...p, muted: !p.muted } : p)),
+  };
+}
+
+export function togglePartSolo(score: Score, partId: string): Score {
+  return {
+    ...score,
+    parts: score.parts.map((p) => (p.id === partId ? { ...p, solo: !p.solo } : p)),
+  };
+}
+
+/** Nudge a quantized note's pitch/duration, or delete it. */
 export function editNote(
   score: Score,
   partId: string,
   noteIndex: number,
-  patch: { deltaSemitones?: number; delete?: boolean },
+  patch: { deltaSemitones?: number; deltaTicks?: number; delete?: boolean },
 ): Score {
   const parts = score.parts.map((p) => {
     if (p.id !== partId) return p;
     let notes = p.notes;
     if (patch.delete) {
       notes = notes.filter((_, i) => i !== noteIndex);
-    } else if (patch.deltaSemitones) {
-      notes = notes.map((n, i) =>
-        i === noteIndex ? { ...n, midi: n.midi + patch.deltaSemitones! } : n,
-      );
+    } else {
+      notes = notes.map((n, i) => {
+        if (i !== noteIndex) return n;
+        const midi = n.midi + (patch.deltaSemitones ?? 0);
+        let durationTicks = Math.max(1, n.durationTicks + (patch.deltaTicks ?? 0));
+        // Don't grow into the next note of this (monophonic) part.
+        const next = p.notes[i + 1];
+        if (next) {
+          durationTicks = Math.min(durationTicks, next.startTick - n.startTick);
+        }
+        return { ...n, midi, durationTicks };
+      });
     }
     return { ...p, notes };
   });

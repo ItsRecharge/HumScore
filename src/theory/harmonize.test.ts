@@ -66,4 +66,15 @@ describe("harmonize", () => {
   it("returns empty for an empty score", () => {
     expect(harmonize([part([])], C_MAJOR, 0)).toEqual([]);
   });
+
+  it("windows chords by the given measure length (3/4)", () => {
+    const notes = [
+      { startTick: 0, durationTicks: 12, midi: 60 },
+      { startTick: 12, durationTicks: 12, midi: 67 },
+    ];
+    const chords = harmonize([part(notes)], C_MAJOR, 24, 12);
+    expect(chords).toHaveLength(2);
+    expect(chords[0]).toMatchObject({ startTick: 0, durationTicks: 12 });
+    expect(chords[1].startTick).toBe(12);
+  });
 });

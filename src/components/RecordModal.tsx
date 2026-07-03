@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { detectNotes } from "../audio/detectNotes";
 import { Recorder } from "../audio/recorder";
+import { startBacking, type Backing } from "../playback/player";
 import { addPart, replacePartRecording } from "../score/scoreOps";
 import {
-  midiToName,
   PITCH_CLASS_NAMES_FLAT,
   PITCH_CLASS_NAMES_SHARP,
+  midiToName,
   type PartRole,
   type RawNote,
   type Score,
@@ -18,6 +19,7 @@ export type RecordTarget =
   | { mode: "rerecord"; partId: string; name: string };
 
 type Phase =
+  | { kind: "arming" }
   | { kind: "countdown"; n: number }
   | { kind: "recording" }
   | { kind: "processing" }
@@ -32,6 +34,44 @@ function keyLabel(score: Score): string {
   return `${names[score.key.tonicPc]} ${score.key.mode}`;
 }
 
+/** Compact pitch/time visualization of the detected notes. */
+function PianoRoll({ notes }: { notes: RawNote[] }) {
+  if (notes.length === 0) return null;
+  const t0 = notes[0].startSec;
+  const t1 = Math.max(...notes.map((n) => n.endSec));
+  const lo = Math.min(...notes.map((n) => n.midi)) - 1;
+  const hi = Math.max(...notes.map((n) => n.midi)) + 1;
+  const W = 360;
+  const H = Math.min(120, Math.max(48, (hi - lo) * 8));
+  const x = (t: number) => ((t - t0) / Math.max(0.001, t1 - t0)) * W;
+  const y = (m: number) => H - ((m - lo) / (hi - lo)) * H;
+  const rowH = H / (hi - lo);
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="w-full rounded border border-slate-200 bg-slate-50"
+      role="img"
+      aria-label="Detected notes"
+    >
+      {notes.map((n, i) => (
+        <g key={i}>
+          <rect
+            x={x(n.startSec)}
+            y={y(n.midi) - rowH / 2}
+            width={Math.max(2, x(n.endSec) - x(n.startSec) - 1)}
+            height={Math.max(3, rowH * 0.8)}
+            rx={2}
+            className="fill-indigo-500"
+          />
+          <title>
+            {midiToName(n.midi)} · {(n.endSec - n.startSec).toFixed(2)}s
+          </title>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
 export default function RecordModal({
   target,
   onClose,
@@ -41,20 +81,35 @@ export default function RecordModal({
 }) {
   const score = useScore();
   const dispatch = useScoreDispatch();
-  const [phase, setPhase] = useState<Phase>({ kind: "countdown", n: 3 });
+  const [phase, setPhase] = useState<Phase>({ kind: "arming" });
   const [level, setLevel] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const recorderRef = useRef<Recorder | null>(null);
+  const backingRef = useRef<Backing | null>(null);
+  const trimSecRef = useRef(0);
   const [attempt, setAttempt] = useState(0);
+
+  // Parts that will play as the backing track (everything but the one being
+  // re-recorded). Their existence is what makes this an overdub.
+  const backingParts = score.parts.filter(
+    (p) => !(target.mode === "rerecord" && p.id === target.partId),
+  );
+  const isOverdub = backingParts.length > 0;
+  const isFirstGridSetter = !isOverdub;
 
   const stopAndProcess = useCallback(async () => {
     const recorder = recorderRef.current;
     if (!recorder) return;
     recorderRef.current = null;
+    backingRef.current?.stop();
+    backingRef.current = null;
     setPhase({ kind: "processing" });
     try {
       const { pcm, sampleRate } = await recorder.stop();
-      const raw = detectNotes(pcm, sampleRate);
+      // Discard everything captured before recording "really" started
+      // (countdown/count-in — including any click bleed from the speakers).
+      const startSample = Math.min(pcm.length, Math.floor(trimSecRef.current * sampleRate));
+      const raw = detectNotes(pcm.subarray(startSample), sampleRate);
       if (raw.length === 0) {
         setPhase({
           kind: "error",
@@ -78,54 +133,91 @@ export default function RecordModal({
     }
   }, [score, target]);
 
-  // Countdown → start recording → hard cap.
+  // Arm mic → countdown (clicks + backing when overdubbing) → record.
   useEffect(() => {
-    setPhase({ kind: "countdown", n: 3 });
+    let cancelled = false;
+    setPhase({ kind: "arming" });
     setElapsed(0);
     setLevel(0);
-    let cancelled = false;
+    trimSecRef.current = 0;
     const timers: ReturnType<typeof setTimeout>[] = [];
-    for (let n = 2; n >= 1; n--) {
-      timers.push(
-        setTimeout(() => {
-          if (!cancelled) setPhase({ kind: "countdown", n });
-        }, (3 - n) * COUNTDOWN_STEP_MS),
-      );
-    }
-    timers.push(
-      setTimeout(async () => {
-        if (cancelled) return;
-        const recorder = new Recorder();
+
+    const run = async () => {
+      const recorder = new Recorder();
+      try {
+        await recorder.start((rms) => setLevel(rms));
+      } catch {
+        recorder.dispose();
+        if (!cancelled) {
+          setPhase({
+            kind: "error",
+            message:
+              "Microphone access was denied or unavailable. Allow microphone access for this site and try again.",
+          });
+        }
+        return;
+      }
+      if (cancelled) {
+        recorder.dispose();
+        return;
+      }
+      recorderRef.current = recorder;
+      const captureStartedAt = performance.now();
+
+      if (isOverdub) {
+        const countInBeats = score.timeSig.beats;
+        setPhase({ kind: "countdown", n: countInBeats });
         try {
-          await recorder.start((rms) => setLevel(rms));
+          const backing = await startBacking(
+            { ...score, parts: backingParts },
+            {
+              countInBeats,
+              maxSec: MAX_RECORD_SEC,
+              onCountBeat: (n) => {
+                if (!cancelled) setPhase({ kind: "countdown", n });
+              },
+            },
+          );
           if (cancelled) {
-            recorder.dispose();
+            backing.stop();
             return;
           }
-          recorderRef.current = recorder;
-          setPhase({ kind: "recording" });
+          backingRef.current = backing;
         } catch {
-          recorder.dispose();
-          if (!cancelled) {
-            setPhase({
-              kind: "error",
-              message:
-                "Microphone access was denied or unavailable. Allow microphone access for this site and try again.",
-            });
-          }
+          // Backing is best-effort; recording still works without it.
         }
-      }, 3 * COUNTDOWN_STEP_MS),
-    );
+        trimSecRef.current = (performance.now() - captureStartedAt) / 1000;
+        if (!cancelled) setPhase({ kind: "recording" });
+      } else {
+        for (let n = 3; n >= 1; n--) {
+          timers.push(
+            setTimeout(() => {
+              if (!cancelled) setPhase({ kind: "countdown", n });
+            }, (3 - n) * COUNTDOWN_STEP_MS),
+          );
+        }
+        timers.push(
+          setTimeout(() => {
+            trimSecRef.current = (performance.now() - captureStartedAt) / 1000;
+            if (!cancelled) setPhase({ kind: "recording" });
+          }, 3 * COUNTDOWN_STEP_MS),
+        );
+      }
+    };
+    void run();
+
     return () => {
       cancelled = true;
       timers.forEach(clearTimeout);
+      backingRef.current?.stop();
+      backingRef.current = null;
       recorderRef.current?.dispose();
       recorderRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attempt]);
 
-  // Elapsed timer + 60 s cap while recording.
+  // Elapsed timer + hard cap while recording.
   const isRecording = phase.kind === "recording";
   useEffect(() => {
     if (!isRecording) return;
@@ -148,9 +240,6 @@ export default function RecordModal({
     onClose();
   };
 
-  const isFirstGridSetter =
-    target.mode === "new" ? score.parts.length === 0 : score.parts.length === 1;
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
@@ -160,13 +249,22 @@ export default function RecordModal({
         <p className="mb-4 text-sm text-slate-500">
           {isFirstGridSetter
             ? "This take sets the tempo and key for the whole score."
-            : `This take will be quantized to the existing ${score.bpm} BPM grid.`}
+            : `You'll hear a ${score.timeSig.beats}-beat count-in, then the other parts at ${score.bpm} BPM — hum along. 🎧 Headphones recommended.`}
         </p>
+
+        {phase.kind === "arming" && (
+          <div className="flex flex-col items-center gap-2 py-8">
+            <div className="h-6 w-6 animate-spin rounded-full border-4 border-slate-200 border-t-slate-500" />
+            <p className="text-sm text-slate-500">Getting the microphone ready…</p>
+          </div>
+        )}
 
         {phase.kind === "countdown" && (
           <div className="flex flex-col items-center gap-2 py-8">
             <div className="text-6xl font-bold tabular-nums text-indigo-600">{phase.n}</div>
-            <p className="text-sm text-slate-500">Get ready to hum…</p>
+            <p className="text-sm text-slate-500">
+              {isOverdub ? "Count-in — hum on the next downbeat…" : "Get ready to hum…"}
+            </p>
           </div>
         )}
 
@@ -199,27 +297,19 @@ export default function RecordModal({
         )}
 
         {phase.kind === "preview" && (
-          <div className="flex flex-col gap-4 py-2">
+          <div className="flex flex-col gap-3 py-2">
             <div className="rounded-lg bg-indigo-50 p-3 text-sm text-indigo-900">
               <span className="font-semibold">{phase.raw.length} notes</span>
               {" · "}
               {phase.next.bpm} BPM
               {isFirstGridSetter &&
-                (phase.next.tempoConfidence >= 0.15 ? " (confident)" : " (uncertain — you can set BPM manually)")}
+                (phase.next.tempoConfidence >= 0.15
+                  ? " (confident)"
+                  : " (uncertain — you can set BPM manually)")}
               {" · "}
               {keyLabel(phase.next)}
             </div>
-            <details className="text-xs text-slate-500">
-              <summary className="cursor-pointer select-none">Detected notes</summary>
-              <div className="mt-2 max-h-32 overflow-auto rounded border border-slate-200 p-2 font-mono">
-                {phase.raw.map((n, i) => (
-                  <div key={i}>
-                    {midiToName(n.midi)} @ {n.startSec.toFixed(2)}s ·{" "}
-                    {(n.endSec - n.startSec).toFixed(2)}s
-                  </div>
-                ))}
-              </div>
-            </details>
+            <PianoRoll notes={phase.raw} />
             <div className="flex gap-2">
               <button
                 onClick={accept}
@@ -265,7 +355,7 @@ export default function RecordModal({
           </div>
         )}
 
-        {(phase.kind === "countdown" || phase.kind === "recording") && (
+        {(phase.kind === "arming" || phase.kind === "countdown" || phase.kind === "recording") && (
           <button
             onClick={onClose}
             className="mt-4 w-full rounded-lg px-4 py-1.5 text-sm text-slate-400 hover:bg-slate-50"

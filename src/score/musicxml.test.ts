@@ -156,6 +156,31 @@ describe("toMusicXML", () => {
     expect(doc.querySelector("sound")?.getAttribute("tempo")).toBe("132");
   });
 
+  it("bars 3/4 correctly: every measure sums to 12 ticks", () => {
+    const score = makeScore(
+      [
+        makePart([
+          { startTick: 0, durationTicks: 4, midi: 60 },
+          { startTick: 8, durationTicks: 8, midi: 64 }, // crosses the 3/4 barline at 12
+          { startTick: 20, durationTicks: 3, midi: 67 },
+        ]),
+      ],
+      { timeSig: { beats: 3, beatType: 4 }, totalTicks: 24 },
+    );
+    const doc = parse(toMusicXML(score));
+    expect(doc.querySelector("time > beats")?.textContent).toBe("3");
+    const measures = doc.querySelectorAll("part > measure");
+    expect(measures).toHaveLength(2);
+    for (const measure of measures) {
+      const sum = [...measure.querySelectorAll(":scope > note > duration")]
+        .map((d) => Number(d.textContent))
+        .reduce((s, d) => s + d, 0);
+      expect(sum).toBe(12);
+    }
+    // The note crossing the barline is tied.
+    expect(doc.querySelectorAll('tie[type="start"]').length).toBeGreaterThan(0);
+  });
+
   it("spells accidentals against the key signature", () => {
     // F# in C major needs an explicit accidental.
     const score = makeScore([makePart([{ startTick: 0, durationTicks: 4, midi: 66 }])]);

@@ -60,7 +60,29 @@ export default function PartsPanel({
                 </div>
               </div>
             </div>
-            <div className="flex gap-1 px-3 pb-2">
+            <div className="flex items-center gap-1 px-3 pb-2">
+              <button
+                onClick={() => dispatch({ type: "PART_MUTE_TOGGLED", partId: part.id })}
+                className={`rounded px-1.5 py-1 text-[11px] font-semibold ${
+                  part.muted
+                    ? "bg-slate-700 text-white"
+                    : "text-slate-400 hover:bg-slate-100"
+                }`}
+                title={part.muted ? "Unmute" : "Mute"}
+              >
+                M
+              </button>
+              <button
+                onClick={() => dispatch({ type: "PART_SOLO_TOGGLED", partId: part.id })}
+                className={`rounded px-1.5 py-1 text-[11px] font-semibold ${
+                  part.solo
+                    ? "bg-amber-400 text-white"
+                    : "text-slate-400 hover:bg-slate-100"
+                }`}
+                title={part.solo ? "Unsolo" : "Solo"}
+              >
+                S
+              </button>
               <button
                 onClick={() =>
                   onRecord({ mode: "rerecord", partId: part.id, name: part.name })
