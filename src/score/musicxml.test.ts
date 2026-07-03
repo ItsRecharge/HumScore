@@ -28,6 +28,7 @@ function makeScore(parts: Part[], overrides: Partial<Score> = {}): Score {
     ...parts.flatMap((p) => p.notes.map((n) => n.startTick + n.durationTicks)),
   );
   return {
+    title: "Test Score",
     bpm: 100,
     bpmSource: "inferred",
     tempoConfidence: 1,

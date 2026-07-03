@@ -74,4 +74,39 @@ describe("historyReducer", () => {
     const state = fresh();
     expect(historyReducer(state, { type: "UNDO" })).toBe(state);
   });
+
+  it("shifts a part along the grid and clamps at zero", () => {
+    let state = fresh();
+    state = historyReducer(state, {
+      type: "PART_RECORDED",
+      rawNotes: MELODY,
+      role: "melody",
+      name: "Melody",
+    });
+    const partId = state.present.parts[0].id;
+    state = historyReducer(state, { type: "PART_SHIFTED", partId, deltaTicks: 4 });
+    expect(state.present.parts[0].notes[0].startTick).toBe(4);
+    // Shifting far left clamps at tick 0 instead of going negative.
+    state = historyReducer(state, { type: "PART_SHIFTED", partId, deltaTicks: -16 });
+    expect(state.present.parts[0].notes[0].startTick).toBe(0);
+  });
+
+  it("round-trips a project file through PROJECT_LOADED", () => {
+    let state = fresh();
+    state = historyReducer(state, {
+      type: "PART_RECORDED",
+      rawNotes: MELODY,
+      role: "melody",
+      name: "Melody",
+    });
+    const serialized = JSON.parse(JSON.stringify(state.present));
+    let loaded = fresh();
+    loaded = historyReducer(loaded, { type: "PROJECT_LOADED", data: serialized });
+    expect(loaded.present.parts).toHaveLength(1);
+    expect(loaded.present.bpm).toBe(state.present.bpm);
+    // Garbage input is rejected, keeping the current score.
+    const before = loaded.present;
+    loaded = historyReducer(loaded, { type: "PROJECT_LOADED", data: { nope: true } });
+    expect(loaded.present).toBe(before);
+  });
 });

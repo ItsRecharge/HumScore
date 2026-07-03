@@ -215,7 +215,7 @@ export function toMusicXML(score: Score): string {
     '<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">',
     '<score-partwise version="4.0">',
     "  <work>",
-    "    <work-title>HumScore</work-title>",
+    `    <work-title>${esc(score.title || "HumScore")}</work-title>`,
     "  </work>",
     "  <part-list>",
   ];
@@ -228,6 +228,10 @@ export function toMusicXML(score: Score): string {
 
   score.parts.forEach((part, partIdx) => {
     lines.push(`  <part id="P${partIdx + 1}">`);
+    // Chord symbols ride the first part; emit each before the item that
+    // contains its tick (items tile the part, so every chord lands somewhere).
+    let chordIdx = 0;
+    const emitChords = partIdx === 0 && score.chordsEnabled;
     for (let m = 0; m < measures; m++) {
       lines.push(`    <measure number="${m + 1}">`);
       if (m === 0) {
@@ -236,9 +240,11 @@ export function toMusicXML(score: Score): string {
       }
       const measureAlters = new Map<string, number>();
       for (const item of measureItems(part.notes, m, tpm)) {
-        if (partIdx === 0 && score.chordsEnabled) {
-          for (const chord of score.chords) {
-            if (chord.startTick === item.startTick) lines.push(...harmonyXml(chord, score.key));
+        if (emitChords) {
+          const itemEnd = item.startTick + item.durationTicks;
+          while (chordIdx < score.chords.length && score.chords[chordIdx].startTick < itemEnd) {
+            lines.push(...harmonyXml(score.chords[chordIdx], score.key));
+            chordIdx++;
           }
         }
         lines.push(...noteXml(item, score.key, measureAlters, tpm));

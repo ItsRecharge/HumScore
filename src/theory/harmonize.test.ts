@@ -34,23 +34,57 @@ describe("harmonize", () => {
     expect(chords.map((c) => c.label)).toEqual(["C", "F", "G", "C"]);
   });
 
-  it("produces one chord per measure covering the whole score", () => {
+  it("tiles the whole score contiguously with merged chords", () => {
     const notes = arpeggio(0, [60, 64, 67, 64]);
     const chords = harmonize([part(notes)], C_MAJOR, 48);
-    expect(chords).toHaveLength(3);
-    expect(chords[0]).toMatchObject({ startTick: 0, durationTicks: 16 });
-    expect(chords[2].startTick).toBe(32);
+    expect(chords[0].startTick).toBe(0);
+    let cursor = 0;
+    for (const c of chords) {
+      expect(c.startTick).toBe(cursor);
+      cursor += c.durationTicks;
+    }
+    expect(cursor).toBe(48);
   });
 
-  it("ends on the tonic", () => {
+  it("keeps one chord for a stable measure but splits a clear mid-measure change", () => {
+    // Measure 1: F A F A | G B G B — F major then G major, half and half.
+    const notes = [
+      { startTick: 0, durationTicks: 2, midi: 65 },
+      { startTick: 2, durationTicks: 2, midi: 69 },
+      { startTick: 4, durationTicks: 2, midi: 65 },
+      { startTick: 6, durationTicks: 2, midi: 69 },
+      { startTick: 8, durationTicks: 2, midi: 67 },
+      { startTick: 10, durationTicks: 2, midi: 71 },
+      { startTick: 12, durationTicks: 2, midi: 67 },
+      { startTick: 14, durationTicks: 2, midi: 71 },
+      // Measure 2: stable C arpeggio → one chord.
+      ...arpeggio(1, [60, 64, 67, 60]),
+    ];
+    const chords = harmonize([part(notes)], C_MAJOR, 32);
+    expect(chords.map((c) => c.label)).toEqual(["F", "G", "C"]);
+    expect(chords[0]).toMatchObject({ startTick: 0, durationTicks: 8 });
+    expect(chords[1]).toMatchObject({ startTick: 8, durationTicks: 8 });
+    expect(chords[2]).toMatchObject({ startTick: 16, durationTicks: 16 });
+  });
+
+  it("resolves an ambiguous scale ending to the tonic", () => {
     const notes = [
       ...arpeggio(0, [60, 64, 67, 64]),
-      ...arpeggio(1, [67, 71, 74, 71]),
-      ...arpeggio(2, [65, 69, 72, 69]),
-      ...arpeggio(3, [67, 71, 74, 67]), // dominant material, but cadence pulls home
+      ...arpeggio(1, [65, 69, 72, 69]),
+      ...arpeggio(2, [67, 71, 74, 71]),
+      ...arpeggio(3, [74, 71, 72, 72]), // D B C C — cadence pulls home
     ];
     const chords = harmonize([part(notes)], C_MAJOR, 64);
     expect(chords[chords.length - 1].rootPc).toBe(0);
+  });
+
+  it("keeps a half cadence when the ending is unambiguously dominant", () => {
+    const notes = [
+      ...arpeggio(0, [60, 64, 67, 64]),
+      ...arpeggio(1, [67, 71, 74, 67]), // pure G material to the end
+    ];
+    const chords = harmonize([part(notes)], C_MAJOR, 32);
+    expect(chords[chords.length - 1].rootPc).toBe(7);
   });
 
   it("labels minor-key chords correctly", () => {
@@ -69,12 +103,12 @@ describe("harmonize", () => {
 
   it("windows chords by the given measure length (3/4)", () => {
     const notes = [
-      { startTick: 0, durationTicks: 12, midi: 60 },
-      { startTick: 12, durationTicks: 12, midi: 67 },
+      ...[60, 64, 67].map((midi, i) => ({ startTick: i * 4, durationTicks: 4, midi })),
+      ...[67, 71, 74].map((midi, i) => ({ startTick: 12 + i * 4, durationTicks: 4, midi })),
     ];
     const chords = harmonize([part(notes)], C_MAJOR, 24, 12);
-    expect(chords).toHaveLength(2);
+    expect(chords.map((c) => c.label)).toEqual(["C", "G"]);
     expect(chords[0]).toMatchObject({ startTick: 0, durationTicks: 12 });
-    expect(chords[1].startTick).toBe(12);
+    expect(chords[1]).toMatchObject({ startTick: 12, durationTicks: 12 });
   });
 });

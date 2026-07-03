@@ -13,10 +13,23 @@ function download(data: BlobPart, filename: string, mimeType: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
+function slug(score: Score): string {
+  const s = score.title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return s || "humscore";
+}
+
 export function downloadMusicXML(score: Score): void {
-  download(toMusicXML(score), "humscore.musicxml", "application/vnd.recordare.musicxml+xml");
+  download(toMusicXML(score), `${slug(score)}.musicxml`, "application/vnd.recordare.musicxml+xml");
 }
 
 export function downloadMidi(score: Score): void {
-  download(toMidiBytes(score), "humscore.mid", "audio/midi");
+  download(toMidiBytes(score), `${slug(score)}.mid`, "audio/midi");
+}
+
+/** Full project file — includes raw recordings, so it round-trips losslessly. */
+export function downloadProject(score: Score): void {
+  download(JSON.stringify(score, null, 2), `${slug(score)}.humscore.json`, "application/json");
 }

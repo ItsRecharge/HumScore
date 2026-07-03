@@ -14,10 +14,13 @@ import {
   emptyScore,
   renamePart,
   replacePartRecording,
+  sanitizeScore,
   setBpm,
   setChordsEnabled,
   setKey,
   setTimeSig,
+  setTitle,
+  shiftPart,
   togglePartMuted,
   togglePartSolo,
 } from "../score/scoreOps";
@@ -30,6 +33,9 @@ export type Action =
   | { type: "PART_RENAMED"; partId: string; name: string }
   | { type: "PART_MUTE_TOGGLED"; partId: string }
   | { type: "PART_SOLO_TOGGLED"; partId: string }
+  | { type: "PART_SHIFTED"; partId: string; deltaTicks: number }
+  | { type: "SET_TITLE"; title: string }
+  | { type: "PROJECT_LOADED"; data: unknown }
   | { type: "SET_BPM"; bpm: number }
   | { type: "SET_KEY"; selection: "auto" | { tonicPc: number; mode: Mode } }
   | { type: "SET_TIME_SIG"; beats: TimeSignature["beats"] }
@@ -58,6 +64,12 @@ function applyAction(score: Score, action: Action): Score {
       return togglePartMuted(score, action.partId);
     case "PART_SOLO_TOGGLED":
       return togglePartSolo(score, action.partId);
+    case "PART_SHIFTED":
+      return shiftPart(score, action.partId, action.deltaTicks);
+    case "SET_TITLE":
+      return setTitle(score, action.title);
+    case "PROJECT_LOADED":
+      return sanitizeScore(action.data) ?? score;
     case "SET_BPM":
       return setBpm(score, action.bpm);
     case "SET_KEY":
@@ -88,6 +100,7 @@ const NOT_UNDOABLE = new Set<Action["type"]>([
   "PART_MUTE_TOGGLED",
   "PART_SOLO_TOGGLED",
   "SET_CHORDS_ENABLED",
+  "SET_TITLE",
 ]);
 
 export function historyReducer(state: HistoryState, action: Action): HistoryState {
@@ -125,9 +138,7 @@ function loadPersisted(): Score | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Score;
-    if (!Array.isArray(parsed.parts) || typeof parsed.bpm !== "number") return null;
-    return parsed;
+    return sanitizeScore(JSON.parse(raw));
   } catch {
     return null;
   }

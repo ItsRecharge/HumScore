@@ -28,6 +28,12 @@ type Phase =
 
 const MAX_RECORD_SEC = 60;
 const COUNTDOWN_STEP_MS = 700;
+/**
+ * Recording latency compensation: speaker output latency plus vocal onset
+ * delay systematically push hummed notes late relative to the backing —
+ * trim slightly early so entries don't land a sixteenth behind the grid.
+ */
+const LATENCY_COMP_SEC = 0.08;
 
 function keyLabel(score: Score): string {
   const names = score.key.fifths < 0 ? PITCH_CLASS_NAMES_FLAT : PITCH_CLASS_NAMES_SHARP;
@@ -186,7 +192,10 @@ export default function RecordModal({
         } catch {
           // Backing is best-effort; recording still works without it.
         }
-        trimSecRef.current = (performance.now() - captureStartedAt) / 1000;
+        trimSecRef.current = Math.max(
+          0,
+          (performance.now() - captureStartedAt) / 1000 - LATENCY_COMP_SEC,
+        );
         if (!cancelled) setPhase({ kind: "recording" });
       } else {
         for (let n = 3; n >= 1; n--) {
@@ -198,7 +207,10 @@ export default function RecordModal({
         }
         timers.push(
           setTimeout(() => {
-            trimSecRef.current = (performance.now() - captureStartedAt) / 1000;
+            trimSecRef.current = Math.max(
+              0,
+              (performance.now() - captureStartedAt) / 1000 - LATENCY_COMP_SEC,
+            );
             if (!cancelled) setPhase({ kind: "recording" });
           }, 3 * COUNTDOWN_STEP_MS),
         );

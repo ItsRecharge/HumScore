@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { downloadMidi, downloadMusicXML } from "../export/downloads";
+import { downloadMidi, downloadMusicXML, downloadProject } from "../export/downloads";
 import { player } from "../playback/player";
 import {
   PITCH_CLASS_NAMES_FLAT,
@@ -33,6 +33,15 @@ export default function Toolbar() {
   const [bpmInput, setBpmInput] = useState(String(score.bpm));
   const [playing, setPlaying] = useState(player.isPlaying);
   const tapTimesRef = useRef<number[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const openProject = async (file: File) => {
+    try {
+      dispatch({ type: "PROJECT_LOADED", data: JSON.parse(await file.text()) });
+    } catch {
+      window.alert("That file doesn't look like a HumScore project.");
+    }
+  };
 
   useEffect(() => setBpmInput(String(score.bpm)), [score.bpm]);
   useEffect(() => player.onStateChange(setPlaying), []);
@@ -101,13 +110,20 @@ export default function Toolbar() {
     score.keySource === "inferred" ? "auto" : `${score.key.tonicPc}:${score.key.mode}`;
 
   const smallBtn =
-    "rounded-lg border border-slate-300 px-2 py-1 text-xs font-medium text-slate-600 enabled:hover:bg-slate-50 disabled:opacity-40";
+    "whitespace-nowrap rounded-lg border border-slate-300 px-2 py-1 text-xs font-medium text-slate-600 enabled:hover:bg-slate-50 disabled:opacity-40";
 
   return (
-    <header className="sticky top-0 z-10 flex h-14 items-center gap-2.5 border-b border-slate-200 bg-white px-4">
-      <h1 className="mr-1 text-lg font-bold tracking-tight text-indigo-700">
+    <header className="sticky top-0 z-10 flex h-14 items-center gap-2.5 border-b border-slate-200 bg-white px-4 print:hidden">
+      <h1 className="text-lg font-bold tracking-tight text-indigo-700">
         Hum<span className="text-slate-800">Score</span>
       </h1>
+      <input
+        aria-label="Score title"
+        value={score.title}
+        onChange={(e) => dispatch({ type: "SET_TITLE", title: e.target.value })}
+        className="w-32 rounded-lg border border-transparent px-2 py-1 text-sm font-medium text-slate-700 hover:border-slate-200 focus:border-indigo-300 focus:outline-none"
+        placeholder="Untitled"
+      />
 
       <div className="flex items-center gap-1">
         <label htmlFor="bpm" className="text-xs font-medium text-slate-500">
@@ -243,6 +259,40 @@ export default function Toolbar() {
         >
           MIDI
         </button>
+        <button
+          onClick={() => window.print()}
+          disabled={!hasParts}
+          className={smallBtn}
+          title="Print the score"
+        >
+          🖨
+        </button>
+        <button
+          onClick={() => downloadProject(score)}
+          disabled={!hasParts}
+          className={smallBtn}
+          title="Save project file (includes recordings)"
+        >
+          💾
+        </button>
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className={smallBtn}
+          title="Open a saved project file"
+        >
+          📂
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json,application/json"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void openProject(file);
+            e.target.value = "";
+          }}
+        />
         <button
           onClick={() => {
             if (window.confirm("Start over? This deletes all recorded parts.")) {

@@ -26,7 +26,7 @@ export default function PartsPanel({
   };
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-slate-50">
+    <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-slate-50 print:hidden">
       <div className="border-b border-slate-200 px-4 py-3">
         <h2 className="text-sm font-semibold text-slate-700">Parts</h2>
         {score.parts.length === 0 && (

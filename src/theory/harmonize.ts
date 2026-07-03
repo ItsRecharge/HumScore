@@ -54,6 +54,14 @@ const START_TONIC_BONUS = 1.5;
 /** Strong pull toward ending on the tonic — scale endings often outline
  * subdominant/submediant tones and would otherwise win on emission. */
 const FINAL_TONIC_BONUS = 3.0;
+/**
+ * Penalty for changing chords at a non-barline segment boundary. High enough
+ * that mild emission preferences keep one chord per measure; a genuinely
+ * different half-measure harmony (ratio ≳ e^0.2 per weight unit) still splits.
+ */
+const MID_MEASURE_CHANGE_PENALTY = 1.8;
+/** Tie-breaker toward primary triads (I/IV/V) when coverage is ambiguous. */
+const PRIMARY_TRIAD_BONUS = 0.25;
 
 function chordTones(state: ChordState, tonicPc: number): Set<number> {
   const root = (tonicPc + state.degree) % 12;
@@ -95,9 +103,12 @@ function chordLabel(state: ChordState, key: KeySignature): string {
 }
 
 /**
- * Rule-based harmonization: Viterbi over diatonic triads, one chord per
- * measure. Emission = beat-strength/duration-weighted chord-tone coverage
- * of all parts' notes; transitions encode functional harmony preferences.
+ * Rule-based harmonization: Viterbi over diatonic triads on half-measure
+ * segments (whole measures in odd meters), with mid-measure chord changes
+ * penalized so they happen only on strong evidence. Emission =
+ * beat-strength/duration-weighted chord-tone coverage of all parts' notes;
+ * transitions encode functional harmony preferences. Consecutive identical
+ * chords are merged into one symbol.
  */
 export function harmonize(
   parts: Part[],
@@ -105,17 +116,18 @@ export function harmonize(
   totalTicks: number,
   ticksPerMeasure: number = TICKS_PER_MEASURE,
 ): ChordSymbol[] {
-  const measures = Math.ceil(totalTicks / ticksPerMeasure);
+  const segTicks = ticksPerMeasure >= 16 ? ticksPerMeasure / 2 : ticksPerMeasure;
+  const measures = Math.ceil(totalTicks / segTicks);
   if (measures === 0) return [];
   const states = key.mode === "major" ? MAJOR_STATES : MINOR_STATES;
   const diatonic = diatonicPcs(key);
   const allNotes = parts.flatMap((p) => p.notes);
 
-  // Emission scores per measure per state.
+  // Emission scores per segment per state.
   const logE: number[][] = [];
   for (let m = 0; m < measures; m++) {
-    const mStart = m * ticksPerMeasure;
-    const mEnd = mStart + ticksPerMeasure;
+    const mStart = m * segTicks;
+    const mEnd = mStart + segTicks;
     const row: number[] = [];
     for (const state of states) {
       const tones = chordTones(state, key.tonicPc);
@@ -132,7 +144,11 @@ export function harmonize(
         else if (diatonic.has(pc)) covered += 0.15 * w;
       }
       const emission = total > 0 ? covered / total : 0.5;
-      row.push(EMISSION_WEIGHT * Math.log(emission + 1e-3));
+      const primary =
+        state.func === TONIC || state.func === SUBDOMINANT || state.func === DOMINANT
+          ? PRIMARY_TRIAD_BONUS
+          : 0;
+      row.push(EMISSION_WEIGHT * Math.log(emission + 1e-3) + primary);
     }
     logE.push(row);
   }
@@ -145,13 +161,20 @@ export function harmonize(
   const back: number[][] = [new Array(S).fill(-1)];
   for (let m = 1; m < measures; m++) {
     const isLast = m === measures - 1;
+    const midMeasure = (m * segTicks) % ticksPerMeasure !== 0;
     const row: number[] = [];
     const backRow: number[] = [];
     for (let s = 0; s < S; s++) {
       let bestPrev = 0;
       let bestVal = -Infinity;
       for (let p = 0; p < S; p++) {
-        let t = transitionScore(states[p].func, states[s].func);
+        // Functional-harmony preferences describe measure-level motion; at a
+        // mid-measure boundary only the change penalty applies.
+        let t = midMeasure
+          ? p === s
+            ? 0
+            : -MID_MEASURE_CHANGE_PENALTY
+          : transitionScore(states[p].func, states[s].func);
         if (isLast && states[p].func === DOMINANT && states[s].func === TONIC) t += 1.0;
         const v = dp[m - 1][p] + t;
         if (v > bestVal) {
@@ -176,14 +199,22 @@ export function harmonize(
     s = back[m][s];
   }
 
-  return path.map((stateIdx, m) => {
-    const state = states[stateIdx];
-    return {
-      startTick: m * ticksPerMeasure,
-      durationTicks: ticksPerMeasure,
+  // Merge consecutive identical chords into single symbols.
+  const chords: ChordSymbol[] = [];
+  for (let m = 0; m < measures; m++) {
+    const state = states[path[m]];
+    const prev = chords[chords.length - 1];
+    if (prev && m > 0 && path[m] === path[m - 1]) {
+      prev.durationTicks += segTicks;
+      continue;
+    }
+    chords.push({
+      startTick: m * segTicks,
+      durationTicks: segTicks,
       rootPc: (key.tonicPc + state.degree) % 12,
       quality: state.quality,
       label: chordLabel(state, key),
-    };
-  });
+    });
+  }
+  return chords;
 }

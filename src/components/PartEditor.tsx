@@ -10,9 +10,28 @@ export default function PartEditor({ part }: { part: Part }) {
   }
   const edit = (noteIndex: number, patch: { deltaSemitones?: number; deltaTicks?: number; delete?: boolean }) =>
     dispatch({ type: "NOTE_EDITED", partId: part.id, noteIndex, patch });
+  const shift = (deltaTicks: number) =>
+    dispatch({ type: "PART_SHIFTED", partId: part.id, deltaTicks });
+  const shiftBtn =
+    "rounded border border-slate-200 px-1.5 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100";
 
   return (
     <div className="max-h-56 overflow-auto">
+      <div className="flex items-center gap-1 border-b border-slate-100 px-2 py-1.5">
+        <span className="mr-1 text-[11px] text-slate-400">Shift part</span>
+        <button onClick={() => shift(-4)} className={shiftBtn} title="Earlier by one beat">
+          ◀ beat
+        </button>
+        <button onClick={() => shift(-1)} className={shiftBtn} title="Earlier by a sixteenth">
+          ◀
+        </button>
+        <button onClick={() => shift(1)} className={shiftBtn} title="Later by a sixteenth">
+          ▶
+        </button>
+        <button onClick={() => shift(4)} className={shiftBtn} title="Later by one beat">
+          beat ▶
+        </button>
+      </div>
       <table className="w-full text-xs">
         <thead>
           <tr className="text-left text-slate-400">

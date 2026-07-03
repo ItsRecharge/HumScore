@@ -72,9 +72,12 @@ export interface Part {
   notes: QuantizedNote[];
   muted?: boolean;
   solo?: boolean;
+  /** Manual grid shift (ticks) applied on top of quantization — pickup fixes. */
+  offsetTicks?: number;
 }
 
 export interface Score {
+  title: string;
   bpm: number;
   bpmSource: "inferred" | "manual";
   /** 0..1 — low values trigger a "set BPM manually" hint. */

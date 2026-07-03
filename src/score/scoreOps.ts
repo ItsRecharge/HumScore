@@ -9,6 +9,7 @@ import {
   type Mode,
   type Part,
   type PartRole,
+  type QuantizedNote,
   type RawNote,
   type Score,
   type TimeSignature,
@@ -16,6 +17,7 @@ import {
 
 export function emptyScore(): Score {
   return {
+    title: "Untitled",
     bpm: 100,
     bpmSource: "inferred",
     tempoConfidence: 0,
@@ -61,6 +63,14 @@ function nextPartId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `part-${Math.random().toString(36).slice(2)}`;
+}
+
+/** Shift notes by the part's manual offset, clamped so nothing goes negative. */
+function withOffset(notes: QuantizedNote[], offsetTicks: number): QuantizedNote[] {
+  if (!offsetTicks) return notes;
+  const minTick = Math.min(...notes.map((n) => n.startTick), Infinity);
+  const shift = Math.max(offsetTicks, -minTick);
+  return notes.map((n) => ({ ...n, startTick: n.startTick + shift }));
 }
 
 /**
@@ -124,6 +134,7 @@ export function replacePartRecording(score: Score, partId: string, rawNotes: Raw
       clef: clefFor(rawNotes),
       rawNotes,
       phaseSec,
+      offsetTicks: 0, // a fresh take supersedes any manual shift
       notes: quantize(rawNotes, next.bpm, phaseSec, { preserveOffset: !isSolePart }),
     };
   });
@@ -152,10 +163,55 @@ export function setBpm(score: Score, bpm: number): Score {
     return {
       ...p,
       phaseSec,
-      notes: quantize(p.rawNotes, bpm, phaseSec, { preserveOffset: i > 0 }),
+      notes: withOffset(
+        quantize(p.rawNotes, bpm, phaseSec, { preserveOffset: i > 0 }),
+        p.offsetTicks ?? 0,
+      ),
     };
   });
   return recompute({ ...score, bpm, bpmSource: "manual", tempoConfidence: 1, parts });
+}
+
+export function setTitle(score: Score, title: string): Score {
+  return { ...score, title };
+}
+
+/** Nudge a whole part along the grid (fix pickups / entry misalignment). */
+export function shiftPart(score: Score, partId: string, deltaTicks: number): Score {
+  const parts = score.parts.map((p) => {
+    if (p.id !== partId || p.notes.length === 0) return p;
+    const minTick = Math.min(...p.notes.map((n) => n.startTick));
+    const applied = Math.max(deltaTicks, -minTick);
+    if (applied === 0) return p;
+    return {
+      ...p,
+      offsetTicks: (p.offsetTicks ?? 0) + applied,
+      notes: p.notes.map((n) => ({ ...n, startTick: n.startTick + applied })),
+    };
+  });
+  return recompute({ ...score, parts });
+}
+
+/** Validate an untrusted score object (project file / localStorage). */
+export function sanitizeScore(input: unknown): Score | null {
+  const s = input as Partial<Score> | null;
+  if (!s || typeof s !== "object" || !Array.isArray(s.parts) || typeof s.bpm !== "number") {
+    return null;
+  }
+  const base = emptyScore();
+  const score: Score = {
+    ...base,
+    ...s,
+    title: typeof s.title === "string" ? s.title : base.title,
+    timeSig:
+      s.timeSig && [2, 3, 4].includes(s.timeSig.beats) ? s.timeSig : base.timeSig,
+    parts: s.parts.filter(
+      (p): p is Part =>
+        !!p && typeof p.id === "string" && Array.isArray(p.notes) && Array.isArray(p.rawNotes),
+    ),
+    chords: Array.isArray(s.chords) ? s.chords : [],
+  };
+  return recompute(score);
 }
 
 export function setKey(score: Score, selection: "auto" | { tonicPc: number; mode: Mode }): Score {

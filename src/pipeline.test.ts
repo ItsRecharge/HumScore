@@ -119,7 +119,13 @@ describe("hum → score pipeline", () => {
     expect(score.key).toMatchObject({ tonicPc: 0, mode: "major" });
     expect(score.parts[0].notes.map((n) => n.midi)).toEqual(midis);
     expect(score.parts[0].notes[0].startTick).toBe(0);
-    expect(score.chords.length).toBe(score.totalTicks / 16);
+    // Chords tile the score contiguously and end on the tonic.
+    let cursor = 0;
+    for (const c of score.chords) {
+      expect(c.startTick).toBe(cursor);
+      cursor += c.durationTicks;
+    }
+    expect(cursor).toBe(score.totalTicks);
     expect(score.chords[score.chords.length - 1].rootPc).toBe(0); // ends on C
 
     // MusicXML is well-formed and every measure sums to 16 ticks.
