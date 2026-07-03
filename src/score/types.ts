@@ -32,6 +32,8 @@ export interface QuantizedNote {
   startTick: number;
   durationTicks: number;
   midi: number;
+  /** 0..1, derived from the hum's energy; drives playback/MIDI dynamics. */
+  velocity?: number;
 }
 
 export type Mode = "major" | "minor";

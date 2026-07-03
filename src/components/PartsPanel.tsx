@@ -87,14 +87,14 @@ export default function PartsPanel({
                 onClick={() =>
                   onRecord({ mode: "rerecord", partId: part.id, name: part.name })
                 }
-                className="rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                className="whitespace-nowrap rounded px-1.5 py-1 text-xs text-slate-600 hover:bg-slate-100"
                 title="Re-record this part"
               >
-                🎤 Re-record
+                🎤 Rec
               </button>
               <button
                 onClick={() => setExpandedId(expandedId === part.id ? null : part.id)}
-                className="rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                className="whitespace-nowrap rounded px-1.5 py-1 text-xs text-slate-600 hover:bg-slate-100"
               >
                 ✏️ Edit
               </button>
@@ -104,7 +104,8 @@ export default function PartsPanel({
                     dispatch({ type: "PART_DELETED", partId: part.id });
                   }
                 }}
-                className="rounded px-2 py-1 text-xs text-red-500 hover:bg-red-50"
+                className="ml-auto rounded px-1.5 py-1 text-xs text-red-500 hover:bg-red-50"
+                title="Delete part"
               >
                 🗑
               </button>

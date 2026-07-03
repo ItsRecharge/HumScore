@@ -75,7 +75,8 @@ export function addPart(
 ): Score {
   let next = { ...score };
   let phaseSec: number;
-  if (next.parts.length === 0 && next.bpmSource === "inferred") {
+  const isFirst = next.parts.length === 0;
+  if (isFirst && next.bpmSource === "inferred") {
     const estimate = inferTempo(rawNotes);
     next.bpm = estimate.bpm;
     next.tempoConfidence = estimate.confidence;
@@ -94,7 +95,8 @@ export function addPart(
     clef: clefFor(rawNotes),
     rawNotes,
     phaseSec,
-    notes: quantize(rawNotes, next.bpm, phaseSec),
+    // Overdubs recorded to the count-in keep their real entry point.
+    notes: quantize(rawNotes, next.bpm, phaseSec, { preserveOffset: !isFirst }),
   };
   next = { ...next, parts: [...next.parts, part] };
   return recompute(next);
@@ -109,6 +111,7 @@ export function replacePartRecording(score: Score, partId: string, rawNotes: Raw
     next.bpm = estimate.bpm;
     next.tempoConfidence = estimate.confidence;
   }
+  const isSolePart = next.parts.length === 1;
   next.parts = next.parts.map((p) => {
     if (p.id !== partId) return p;
     const phaseSec = fitPhase(
@@ -121,7 +124,7 @@ export function replacePartRecording(score: Score, partId: string, rawNotes: Raw
       clef: clefFor(rawNotes),
       rawNotes,
       phaseSec,
-      notes: quantize(rawNotes, next.bpm, phaseSec),
+      notes: quantize(rawNotes, next.bpm, phaseSec, { preserveOffset: !isSolePart }),
     };
   });
   return recompute(next);
@@ -140,13 +143,17 @@ export function renamePart(score: Score, partId: string, name: string): Score {
 
 /** Manual BPM override: re-quantize every part from its raw notes. */
 export function setBpm(score: Score, bpm: number): Score {
-  const parts = score.parts.map((p) => {
+  const parts = score.parts.map((p, i) => {
     const phaseSec = fitPhase(
       p.rawNotes.map((n) => n.startSec),
       p.rawNotes.map((n) => Math.min(1, n.endSec - n.startSec)),
       bpm,
     ).phaseSec;
-    return { ...p, phaseSec, notes: quantize(p.rawNotes, bpm, phaseSec) };
+    return {
+      ...p,
+      phaseSec,
+      notes: quantize(p.rawNotes, bpm, phaseSec, { preserveOffset: i > 0 }),
+    };
   });
   return recompute({ ...score, bpm, bpmSource: "manual", tempoConfidence: 1, parts });
 }

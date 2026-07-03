@@ -15,7 +15,7 @@ export function toMidiBytes(score: Score): Uint8Array {
         midi: n.midi,
         time: n.startTick * spt,
         duration: n.durationTicks * spt,
-        velocity: 0.8,
+        velocity: n.velocity ?? 0.8,
       });
     }
   }

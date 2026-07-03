@@ -16,10 +16,13 @@ export const SEGMENT_DEFAULTS = {
   medianFilterFrames: 5,
   /** Unvoiced gaps up to this many frames are bridged. */
   bridgeFrames: 2,
-  /** Pitch jump (semitones) that starts a new note... */
-  pitchJumpSemitones: 0.6,
-  /** ...when sustained for this many consecutive frames. */
-  pitchJumpFrames: 3,
+  /**
+   * Pitch jump (semitones) that starts a new note. Must sit above vibrato
+   * depth (±0.5–0.8 st is common in untrained voices) but below a semitone.
+   */
+  pitchJumpSemitones: 0.8,
+  /** ...when sustained for this many consecutive frames (~43 ms at 48 kHz). */
+  pitchJumpFrames: 4,
   /** Re-articulation: local RMS min below this fraction of the envelope. */
   dipEnvelopeFactor: 0.5,
   dipEnvelopeWindowSec: 0.1,

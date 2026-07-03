@@ -2,15 +2,24 @@ import type { QuantizedNote, RawNote } from "../score/types";
 
 const MERGE_GAP_SEC = 0.03;
 
+export interface QuantizeOptions {
+  /**
+   * Keep the notes' absolute grid position instead of shifting the first
+   * note to tick 0. Used for overdubbed parts: recording starts on the
+   * downbeat (after the count-in), so silence before the entry is real.
+   */
+  preserveOffset?: boolean;
+}
+
 /**
  * Snap raw notes (seconds) onto the sixteenth grid defined by bpm + phase.
- * Guarantees a monophonic, non-overlapping, chronologically sorted result
- * whose first note starts at tick 0.
+ * Guarantees a monophonic, non-overlapping, chronologically sorted result.
  */
 export function quantize(
   notes: RawNote[],
   bpm: number,
   phaseSec: number,
+  opts: QuantizeOptions = {},
 ): QuantizedNote[] {
   if (notes.length === 0) return [];
   const step = 15 / bpm;
@@ -24,20 +33,29 @@ export function quantize(
     const prev = merged[merged.length - 1];
     if (prev && prev.midi === n.midi && n.startSec - prev.endSec < MERGE_GAP_SEC) {
       prev.endSec = n.endSec;
+      prev.energy = Math.max(prev.energy, n.energy);
     } else {
       merged.push({ ...n });
     }
   }
 
+  const maxEnergy = Math.max(...merged.map((n) => n.energy), 1e-6);
   let quantized: QuantizedNote[] = merged.map((n) => {
     const startTick = tick(n.startSec);
     const endTick = Math.max(startTick + 1, tick(n.endSec));
-    return { startTick, durationTicks: endTick - startTick, midi: n.midi };
+    return {
+      startTick,
+      durationTicks: endTick - startTick,
+      midi: n.midi,
+      velocity: 0.5 + 0.5 * (n.energy / maxEnergy),
+    };
   });
 
-  // Shift so the first note lands on tick 0.
+  // Anchor to the grid: either the first note defines tick 0, or (overdub)
+  // absolute positions are kept — only pulled up if latency made them negative.
   const minTick = Math.min(...quantized.map((n) => n.startTick));
-  quantized = quantized.map((n) => ({ ...n, startTick: n.startTick - minTick }));
+  const shift = opts.preserveOffset ? Math.min(0, minTick) : minTick;
+  quantized = quantized.map((n) => ({ ...n, startTick: n.startTick - shift }));
 
   // Repair monophonic overlaps: truncate at the next onset; drop collapsed notes.
   const result: QuantizedNote[] = [];

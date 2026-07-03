@@ -66,19 +66,23 @@ function scheduleScore(
   const disposables: { dispose(): void }[] = [];
   const audible = audiblePartIds(score);
 
+  // A touch of shared room so the raw oscillators don't sound clinical.
+  const reverb = new Tone.Reverb({ decay: 1.6, wet: 0.18 }).toDestination();
+  disposables.push(reverb);
+
   for (const part of score.parts) {
     if (!audible.has(part.id)) continue;
     const synth = new Tone.Synth({
       oscillator: { type: ROLE_OSCILLATOR[part.role] },
       envelope: { attack: 0.02, decay: 0.1, sustain: 0.7, release: 0.15 },
-    }).toDestination();
+    }).connect(reverb);
     synth.volume.value = volumeDb;
     disposables.push(synth);
     const events: NoteEvent[] = part.notes.map((n) => ({
       time: offsetSec + n.startTick * spt,
       freq: midiToFreq(n.midi),
       durSec: n.durationTicks * spt * 0.95,
-      velocity: 0.8,
+      velocity: n.velocity ?? 0.8,
     }));
     disposables.push(
       new Tone.Part<NoteEvent>((time, ev) => {
@@ -91,7 +95,7 @@ function scheduleScore(
     const poly = new Tone.PolySynth(Tone.Synth, {
       oscillator: { type: "triangle" },
       envelope: { attack: 0.05, decay: 0.2, sustain: 0.5, release: 0.3 },
-    }).toDestination();
+    }).connect(reverb);
     poly.volume.value = volumeDb - 10;
     disposables.push(poly);
     disposables.push(
