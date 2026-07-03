@@ -1,0 +1,83 @@
+import { midiToName, type Part } from "../score/types";
+import { useScoreDispatch } from "../state/store";
+
+/** Minimal note editing: nudge pitch by a semitone or delete a note. */
+export default function PartEditor({ part }: { part: Part }) {
+  const dispatch = useScoreDispatch();
+  if (part.notes.length === 0) {
+    return <p className="px-2 py-1 text-xs text-slate-400">No notes.</p>;
+  }
+  return (
+    <div className="max-h-48 overflow-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-left text-slate-400">
+            <th className="px-2 py-1 font-medium">Note</th>
+            <th className="px-2 py-1 font-medium">Beat</th>
+            <th className="px-2 py-1 font-medium">Len</th>
+            <th className="px-2 py-1" />
+          </tr>
+        </thead>
+        <tbody>
+          {part.notes.map((n, i) => (
+            <tr key={i} className="border-t border-slate-100">
+              <td className="px-2 py-1 font-mono text-slate-700">{midiToName(n.midi)}</td>
+              <td className="px-2 py-1 tabular-nums text-slate-500">
+                {(n.startTick / 4 + 1).toFixed(2).replace(/\.?0+$/, "")}
+              </td>
+              <td className="px-2 py-1 tabular-nums text-slate-500">
+                {n.durationTicks / 4}
+              </td>
+              <td className="px-2 py-1">
+                <div className="flex justify-end gap-1">
+                  <button
+                    title="Down a semitone"
+                    onClick={() =>
+                      dispatch({
+                        type: "NOTE_EDITED",
+                        partId: part.id,
+                        noteIndex: i,
+                        patch: { deltaSemitones: -1 },
+                      })
+                    }
+                    className="rounded px-1.5 py-0.5 text-slate-500 hover:bg-slate-100"
+                  >
+                    ♭
+                  </button>
+                  <button
+                    title="Up a semitone"
+                    onClick={() =>
+                      dispatch({
+                        type: "NOTE_EDITED",
+                        partId: part.id,
+                        noteIndex: i,
+                        patch: { deltaSemitones: 1 },
+                      })
+                    }
+                    className="rounded px-1.5 py-0.5 text-slate-500 hover:bg-slate-100"
+                  >
+                    ♯
+                  </button>
+                  <button
+                    title="Delete note"
+                    onClick={() =>
+                      dispatch({
+                        type: "NOTE_EDITED",
+                        partId: part.id,
+                        noteIndex: i,
+                        patch: { delete: true },
+                      })
+                    }
+                    className="rounded px-1.5 py-0.5 text-red-400 hover:bg-red-50"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
