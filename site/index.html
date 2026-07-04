@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HumScore — Documentation</title>
+<meta name="description" content="Documentation for HumScore: hum each part of a song and get real, editable, playable sheet music — fully client-side. Startup guide, screenshots, FAQ, and debugging.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%B5%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --paper:#FBFBFE; --white:#FFFFFF; --ink:#17163A; --dim:#5D5C7E;
+  --violet:#4F46E5; --violet-deep:#3A32B8; --violet-wash:#EEEDFC; --rose:#E8467C; --edge:#E4E3F2;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:76px}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation:none!important;transition:none!important}}
+body{background:var(--paper);color:var(--ink);font:16px/1.65 "Inter",system-ui,sans-serif;overflow-x:clip}
+h1,h2,h3,h4{font-family:"Space Grotesk",sans-serif;line-height:1.15;letter-spacing:-.015em}
+a{color:var(--violet)}
+img{max-width:100%;height:auto;display:block}
+code{font-family:var(--mono);font-size:.84em;background:var(--violet-wash);border:1px solid var(--edge);border-radius:4px;padding:.1em .35em;color:#332D93}
+pre{background:#191734;color:#E2E0F7;border-radius:10px;padding:1rem 1.25rem;overflow-x:auto;margin:1rem 0;font-size:.85rem;line-height:1.6}
+pre code{background:none;border:none;padding:0;font-size:1em;color:inherit}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+
+/* waveform→notes divider */
+.wavediv{height:64px;display:flex;align-items:center;justify-content:center}
+.wavediv svg{width:min(560px,88%);height:44px}
+
+/* nav */
+nav{position:sticky;top:0;z-index:50;background:rgba(251,251,254,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--edge)}
+nav .wrap{display:flex;align-items:center;gap:1.4rem;height:60px}
+.brand{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:1.05rem;color:var(--ink);text-decoration:none;white-space:nowrap}
+.brand span{color:var(--violet)}
+nav ul{display:flex;gap:1.15rem;list-style:none;margin-left:auto;overflow-x:auto;min-width:0}
+nav ul a{color:var(--dim);text-decoration:none;font-size:.85rem;font-weight:600;white-space:nowrap;padding:.35rem 0;border-bottom:2px solid transparent}
+nav ul a:hover{color:var(--violet);border-bottom-color:var(--rose)}
+
+/* hero */
+header{border-bottom:1px solid var(--edge);background:
+  radial-gradient(900px 400px at 80% -100px,rgba(79,70,229,.10),transparent 60%),
+  radial-gradient(700px 340px at 10% -80px,rgba(232,70,124,.07),transparent 60%)}
+.hero{padding:4.6rem 0 3.4rem;text-align:center}
+.pill{display:inline-block;font-family:var(--mono);font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--violet);border:1px solid var(--edge);border-radius:999px;padding:.34rem .95rem;background:var(--white)}
+.hero h1{font-size:clamp(2.4rem,6vw,4rem);font-weight:700;margin:1.1rem auto .7rem;max-width:820px}
+.hero h1 em{font-style:normal;color:var(--violet)}
+.hero .tagline{max-width:640px;margin:0 auto;color:var(--dim);font-size:1.08rem}
+.cta-row{display:flex;gap:.9rem;justify-content:center;flex-wrap:wrap;margin-top:1.8rem}
+.btn{display:inline-flex;align-items:center;gap:.5rem;text-decoration:none;font-weight:700;font-size:.92rem;border-radius:10px;padding:.75rem 1.5rem;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease}
+.btn:hover{transform:translateY(-1px)}
+.btn-primary{background:var(--violet);color:#fff;box-shadow:0 6px 20px rgba(79,70,229,.3)}
+.btn-ghost{background:var(--white);color:var(--ink);border:1px solid var(--edge)}
+.hero-shot{max-width:960px;margin:3rem auto 0;border-radius:14px;overflow:hidden;border:1px solid var(--edge);box-shadow:0 24px 70px rgba(23,22,58,.14)}
+.hero-shot img{width:100%}
+
+/* sections */
+section{padding:4.2rem 0}
+.sec-head{max-width:660px;margin-bottom:2.2rem}
+.kicker{font-family:var(--mono);font-size:.72rem;letter-spacing:.2em;text-transform:uppercase;color:var(--rose);font-weight:600}
+.sec-head h2{font-size:clamp(1.7rem,3.4vw,2.4rem);font-weight:700;margin:.4rem 0 .55rem}
+.sec-head p{color:var(--dim)}
+.alt{background:var(--white);border-top:1px solid var(--edge);border-bottom:1px solid var(--edge)}
+
+/* pipeline steps (how it works) */
+.pipe{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1rem;counter-reset:pipe}
+.pipe .stage{background:var(--white);border:1px solid var(--edge);border-radius:12px;padding:1.2rem 1.2rem;min-width:0;position:relative}
+.alt .pipe .stage{background:var(--paper)}
+.pipe .stage::before{counter-increment:pipe;content:counter(pipe);font-family:"Space Grotesk",sans-serif;font-weight:700;color:#fff;background:var(--violet);width:1.7rem;height:1.7rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.85rem;margin-bottom:.7rem}
+.pipe .stage h3{font-size:.95rem;margin-bottom:.35rem}
+.pipe .stage p{font-size:.85rem;color:var(--dim)}
+
+/* features */
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:1.1rem}
+.card{background:var(--white);border:1px solid var(--edge);border-radius:12px;padding:1.35rem 1.4rem;min-width:0}
+.alt .card{background:var(--paper)}
+.card h3{font-size:1rem;margin-bottom:.45rem}
+.card p{font-size:.9rem;color:var(--dim)}
+
+/* gallery */
+.shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.2rem}
+figure.shot{background:var(--white);border:1px solid var(--edge);border-radius:12px;overflow:hidden;min-width:0}
+figure.shot img{width:100%;border-bottom:1px solid var(--edge);background:#fff}
+figure.shot figcaption{padding:.8rem 1rem;font-size:.83rem;color:var(--dim)}
+figure.shot figcaption strong{color:var(--ink);display:block;font-size:.88rem}
+figure.wide{grid-column:1/-1}
+
+/* steps */
+.steps{display:grid;gap:1rem;max-width:840px}
+.step{background:var(--white);border:1px solid var(--edge);border-radius:12px;padding:1.3rem 1.4rem 1.3rem 4.4rem;position:relative;min-width:0}
+.step .n{position:absolute;left:1.15rem;top:1.25rem;width:2.05rem;height:2.05rem;border-radius:50%;background:var(--violet);color:#fff;font-family:"Space Grotesk",sans-serif;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:.9rem}
+.step h3{font-size:1rem;margin-bottom:.4rem}
+.step p{font-size:.92rem;color:var(--dim)}
+.step pre{margin:.7rem 0 0}
+
+/* docs */
+.doc-cols{display:grid;grid-template-columns:1fr 1fr;gap:2.4rem}
+@media(max-width:840px){.doc-cols{grid-template-columns:1fr}}
+.doc-block{min-width:0}
+.doc-block h3{font-size:1.05rem;margin:1.7rem 0 .6rem;color:var(--violet-deep)}
+.doc-block h3:first-child{margin-top:0}
+.doc-block p,.doc-block li{font-size:.93rem;color:var(--dim)}
+.doc-block ul{padding-left:1.2rem;display:grid;gap:.4rem}
+.doc-block li strong,.doc-block p strong{color:var(--ink)}
+table{width:100%;border-collapse:collapse;font-size:.87rem;margin:.8rem 0}
+th{text-align:left;font-family:var(--mono);font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;color:var(--rose);border-bottom:2px solid var(--edge);padding:.5rem .6rem}
+td{border-bottom:1px solid var(--edge);padding:.5rem .6rem;color:var(--dim);vertical-align:top}
+.table-scroll{overflow-x:auto}
+
+/* FAQ / debug */
+details{background:var(--white);border:1px solid var(--edge);border-radius:12px;margin-bottom:.7rem;overflow:hidden}
+.alt details{background:var(--paper)}
+summary{cursor:pointer;padding:1rem 1.25rem;font-weight:600;font-size:.95rem;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:1rem}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";font-family:"Space Grotesk",sans-serif;font-size:1.25rem;color:var(--violet);flex-shrink:0}
+details[open] summary::after{content:"–"}
+details .body{padding:0 1.25rem 1.1rem;font-size:.92rem;color:var(--dim)}
+details .body p{margin-bottom:.6rem}
+details .body p:last-child{margin-bottom:0}
+.debug summary{font-family:var(--mono);font-size:.84rem;font-weight:500}
+.debug summary .sym{color:var(--rose);font-weight:700}
+.fix-label{display:inline-block;font-family:var(--mono);font-size:.66rem;letter-spacing:.16em;text-transform:uppercase;color:#fff;background:var(--violet);border-radius:4px;padding:.15rem .5rem;margin:.2rem 0 .4rem}
+
+footer{background:#191734;color:#B9B6E4;padding:2.5rem 0;text-align:center;font-size:.85rem}
+footer a{color:#fff}
+:focus-visible{outline:3px solid var(--rose);outline-offset:2px;border-radius:4px}
+</style>
+</head>
+<body>
+
+<nav aria-label="Main">
+  <div class="wrap">
+    <a class="brand" href="#top">Hum<span>Score</span></a>
+    <ul>
+      <li><a href="#screens">Screenshots</a></li>
+      <li><a href="#start">Startup guide</a></li>
+      <li><a href="#docs">Documentation</a></li>
+      <li><a href="#faq">FAQ</a></li>
+      <li><a href="#debug">Debugging</a></li>
+      <li><a href="https://github.com/ItsRecharge/HumScore">GitHub</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header id="top">
+  <div class="wrap hero">
+    <span class="pill">100% client-side · no server · no API keys · no model downloads</span>
+    <h1>Hum it. <em>Read it.</em> Play it.</h1>
+    <p class="tagline">Hum the parts of a song one at a time — melody, bass, a countermelody —
+    and HumScore turns them into real, editable, playable sheet music with chord symbols,
+    exported as MusicXML and MIDI. Everything happens in your browser.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#start">Run it locally</a>
+      <a class="btn btn-ghost" href="https://github.com/ItsRecharge/HumScore">View source on GitHub</a>
+    </div>
+    <div class="hero-shot">
+      <img src="img/4-two-parts.png" alt="HumScore with a hummed melody and bass rendered as engraved two-stave notation with a chord symbol, tempo marking, and per-part controls" width="1320" height="720" fetchpriority="high">
+    </div>
+  </div>
+</header>
+
+<div class="wavediv" role="presentation">
+  <svg viewBox="0 0 560 44" fill="none" aria-hidden="true">
+    <path d="M0 22 q6 -16 12 0 t12 0 t12 0 t12 0 t12 0 t12 0 t12 0 t12 0 t12 0 t12 0 t12 0 t12 0" stroke="#E8467C" stroke-width="2" opacity=".65"/>
+    <path d="M160 22 q7 -10 14 0 t14 0 t14 0 t14 0 t14 0" stroke="#4F46E5" stroke-width="2" opacity=".5"/>
+    <g fill="#4F46E5">
+      <circle cx="330" cy="24" r="5"/><rect x="333.5" y="2" width="2" height="22" rx="1"/>
+      <circle cx="390" cy="16" r="5"/><rect x="393.5" y="-6" width="2" height="22" rx="1" transform="translate(0 12)"/>
+      <circle cx="450" cy="26" r="5"/><rect x="453.5" y="4" width="2" height="22" rx="1"/>
+      <circle cx="510" cy="14" r="5"/><rect x="513.5" y="-8" width="2" height="22" rx="1" transform="translate(0 12)"/>
+    </g>
+  </svg>
+</div>
+
+<section id="how">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="kicker">How it works</span>
+      <h2>From voice to engraved score</h2>
+    </div>
+    <div class="pipe">
+      <div class="stage"><h3>Hum a part</h3><p>One voice at a time — each hum is monophonic. Melody first, then bass, then a countermelody.</p></div>
+      <div class="stage"><h3>Transcribe</h3><p>Pitch detection (McLeod pitch method) turns the audio into notes; tempo and key are inferred automatically.</p></div>
+      <div class="stage"><h3>Quantize</h3><p>Rhythm snaps onto a sixteenth grid. Your first part establishes the grid for the whole score.</p></div>
+      <div class="stage"><h3>Overdub in sync</h3><p>Later parts get a click count-in and the existing parts as a backing track (headphones recommended).</p></div>
+      <div class="stage"><h3>Harmonize &amp; export</h3><p>Rule-based harmonization (Viterbi over diatonic triads) adds chords; export MusicXML and MIDI.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="kicker">Also on board</span>
+      <h2>An editor, not just a transcriber</h2>
+    </div>
+    <div class="grid3">
+      <div class="card"><h3>Note editing</h3><p>Pitch nudge, duration changes, deletion, and click-to-audition on any note — plus a piano-roll preview of every take before you accept it.</p></div>
+      <div class="card"><h3>Playback with a cursor</h3><p>Engraved notation (OpenSheetMusicDisplay) plays back in the browser via Tone.js — a synth per part plus a chord poly synth — with a moving cursor and per-part mute/solo.</p></div>
+      <div class="card"><h3>Tempo tools</h3><p>Tap tempo, ÷2/×2 tempo-octave fixes, and lossless re-quantize: raw recordings are retained, so changing the BPM never degrades your takes.</p></div>
+      <div class="card"><h3>Time signatures</h3><p>4/4, 3/4, and 2/4 — switch any time and the score re-bars.</p></div>
+      <div class="card"><h3>Undo, redo, autosave</h3><p>Ctrl+Z / Ctrl+Y across every action, Space to play/stop, and autosave to localStorage so a refresh never loses your score.</p></div>
+      <div class="card"><h3>Honest uncertainty</h3><p>If tempo detection is unsure (rubato humming is genuinely hard), an amber dot appears next to the BPM — set it manually and hit Re-quantize.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="screens">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="kicker">Screenshots</span>
+      <h2>A session, start to finish</h2>
+      <p>Captured by the repo's own end-to-end smoke test, which drives the real app with a synthesized hum.</p>
+    </div>
+    <div class="shots">
+      <figure class="shot"><img loading="lazy" src="img/1-empty.png" alt="Empty HumScore workspace inviting the first hummed part" width="1320" height="720"><figcaption><strong>A blank score</strong>Add a part by humming it — the first take sets tempo and key.</figcaption></figure>
+      <figure class="shot"><img loading="lazy" src="img/2-preview.png" alt="Record Melody dialog showing 8 detected notes at 120 BPM in C major with a piano-roll preview" width="1280" height="720"><figcaption><strong>Take preview</strong>Every recording shows its notes on a piano roll before you accept.</figcaption></figure>
+      <figure class="shot"><img loading="lazy" src="img/3-score.png" alt="Single-part melody rendered as engraved notation" width="1320" height="720"><figcaption><strong>First part rendered</strong>The hum is now engraved, editable notation with chords.</figcaption></figure>
+      <figure class="shot"><img loading="lazy" src="img/4-two-parts.png" alt="Melody and bass parts on treble and bass staves" width="1320" height="720"><figcaption><strong>Overdubbed bass</strong>Recorded against a count-in and the melody as backing.</figcaption></figure>
+      <figure class="shot"><img loading="lazy" src="img/5-playing.png" alt="Score playing back with a highlighted playback cursor" width="1320" height="720"><figcaption><strong>Playback</strong>Cursor follows the music; each part gets its own synth.</figcaption></figure>
+      <figure class="shot"><img loading="lazy" src="img/6-three-four.png" alt="The same score re-barred in 3/4 time" width="1320" height="720"><figcaption><strong>Re-barred in 3/4</strong>Switching time signature reflows the whole score.</figcaption></figure>
+      <figure class="shot wide"><img loading="lazy" src="img/7-after-reload.png" alt="Score intact after a page reload thanks to localStorage autosave" width="1320" height="720"><figcaption><strong>After a refresh</strong>Autosave means the score survives reloads — no account, no cloud.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="start" class="alt">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="kicker">Startup guide</span>
+      <h2>Running HumScore</h2>
+      <p>It's a static Vite app — <strong>Node.js 18+</strong> is the only prerequisite. A mic helps, but the smoke test can hum for you.</p>
+    </div>
+    <div class="steps">
+      <div class="step"><span class="n">1</span>
+        <h3>Install and start</h3>
+        <pre><code>git clone https://github.com/ItsRecharge/HumScore
+cd HumScore
+npm install
+npm run dev        # http://localhost:5173</code></pre>
+      </div>
+      <div class="step"><span class="n">2</span>
+        <h3>Record your first part</h3>
+        <p>Click <strong>+ Melody</strong>, allow microphone access, and hum after the 3-2-1 countdown. Review the piano-roll preview, then <strong>Accept</strong>. That take sets the tempo and key for the whole score.</p>
+      </div>
+      <div class="step"><span class="n">3</span>
+        <h3>Overdub the rest</h3>
+        <p>Put on headphones, then add Bass or Counter parts — you'll hear a click count-in plus your existing parts as a backing track so everything lands on the same grid.</p>
+      </div>
+      <div class="step"><span class="n">4</span>
+        <h3>Edit, play, export</h3>
+        <p>Space toggles playback. Click notes to audition or edit them. Export with the <strong>MusicXML</strong> or <strong>MIDI</strong> buttons — both open in MuseScore, Finale, Sibelius, or any DAW.</p>
+      </div>
+      <div class="step"><span class="n">5</span>
+        <h3>Tests and builds</h3>
+        <pre><code>npm run test       # vitest: theory, serializer, audio-pipeline tests
+npm run build      # typecheck + production build</code></pre>
+      </div>
+      <div class="step"><span class="n">6</span>
+        <h3>The self-humming E2E test</h3>
+        <p>A smoke test drives the real app in headless Edge with a stubbed microphone that "hums" a synthesized melody — record → transcribe → render → play → export. Screenshots land in <code>scripts/smoke-out/</code>.</p>
+        <pre><code>npm run dev &amp;
+node scripts/smoke.e2e.mjs</code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="docs">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="kicker">Full documentation</span>
+      <h2>Architecture &amp; theory</h2>
+    </div>
+    <div class="doc-cols">
+      <div class="doc-block">
+        <h3>The hard seam</h3>
+        <p><strong>Audio → notes</strong> (signal processing) and <strong>notes → score</strong> (symbolic music theory) are separate modules. Only <code>RawNote[]</code> in the seconds domain crosses the boundary, via <code>audio/detectNotes.ts</code>. Everything symbolic is tick-based — 16 ticks per 4/4 measure — and pure, which is what makes it unit-testable.</p>
+
+        <h3>Module map</h3>
+        <pre><code>src/
+  audio/      mic capture (AudioWorklet),
+              pitch tracking (pitchy),
+              note segmentation
+  theory/     tempo inference, quantization,
+              key inference (Krumhansl–Kessler),
+              harmonization (Viterbi over
+              diatonic triads)
+  score/      score model, MusicXML serializer
+  playback/   Tone.js (synth per part +
+              chord poly synth)
+  export/     MusicXML / MIDI downloads
+  state/      React reducer store
+  components/ Toolbar, PartsPanel, ScoreView
+              (OpenSheetMusicDisplay),
+              RecordModal, PartEditor</code></pre>
+
+        <h3>Built with</h3>
+        <p>Vite + React 18 + TypeScript + Tailwind, <strong>pitchy</strong> (pitch detection), <strong>OpenSheetMusicDisplay</strong> (engraving), <strong>Tone.js</strong> + <strong>@tonejs/midi</strong> (playback and MIDI export).</p>
+      </div>
+
+      <div class="doc-block">
+        <h3>The theory pipeline, step by step</h3>
+        <div class="table-scroll">
+        <table>
+          <tr><th>Stage</th><th>Method</th></tr>
+          <tr><td>Pitch tracking</td><td>McLeod pitch method on mic audio from an AudioWorklet</td></tr>
+          <tr><td>Note segmentation</td><td>Contiguous pitched regions become <code>RawNote[]</code> (seconds)</td></tr>
+          <tr><td>Tempo inference</td><td>Estimated from onset spacing; flagged amber when uncertain</td></tr>
+          <tr><td>Quantization</td><td>Onsets/durations snapped to a sixteenth grid (ticks)</td></tr>
+          <tr><td>Key inference</td><td>Krumhansl–Kessler profile correlation</td></tr>
+          <tr><td>Harmonization</td><td>Viterbi decoding over diatonic triads — deterministic, no LLM</td></tr>
+          <tr><td>Engraving</td><td>Score model → MusicXML → OpenSheetMusicDisplay render</td></tr>
+        </table>
+        </div>
+
+        <h3>Design decisions worth knowing</h3>
+        <ul>
+          <li><strong>First part is the anchor.</strong> Its inferred tempo and key define the grid; overdubs sync to it via count-in + backing playback rather than post-hoc alignment.</li>
+          <li><strong>Raw takes are never discarded.</strong> Re-quantizing after a BPM fix recomputes from the original recording — lossless by construction.</li>
+          <li><strong>Monophonic per part, polyphonic per score.</strong> Humming is single-voice; multi-part texture comes from layering parts, which also keeps pitch tracking reliable.</li>
+          <li><strong>No network at all.</strong> Transcription, harmonization, engraving, playback, and export all run in the browser — nothing is uploaded anywhere.</li>
+        </ul>
+
+        <h3>Exports</h3>
+        <p><strong>MusicXML</strong> carries parts, chords, and time signatures into notation software. <strong>MIDI</strong> carries notes and tempo into DAWs. Autosave keeps the working score in localStorage between sessions.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="faq" class="alt">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="kicker">FAQ</span>
+      <h2>Frequently asked questions</h2>
+    </div>
+    <details>
+      <summary>Do I need an account, a server, or an API key?</summary>
+      <div class="body"><p>No, no, and no. HumScore is fully client-side: no server, no API keys, no ML model downloads. Your voice never leaves the browser, and the score persists locally via autosave.</p></div>
+    </details>
+    <details>
+      <summary>Why can I only hum one voice at a time?</summary>
+      <div class="body"><p>Monophonic pitch tracking is reliable; polyphonic transcription is a research problem. Each part is one voice, and the multi-part texture comes from overdubbing — the same way musicians layer takes in a studio.</p></div>
+    </details>
+    <details>
+      <summary>Why does it recommend headphones for overdubs?</summary>
+      <div class="body"><p>When you record a second part, the existing parts play as a backing track. Without headphones the mic hears that playback mixed with your voice, which pollutes pitch detection. Headphones keep the mic input clean.</p></div>
+    </details>
+    <details>
+      <summary>What's the amber dot next to the BPM?</summary>
+      <div class="body"><p>An honesty indicator: tempo inference was uncertain (free-form or rubato humming makes beat detection genuinely hard). Set the BPM manually — or use tap tempo — and hit <strong>Re-quantize</strong>. Raw recordings are retained, so this is lossless.</p></div>
+    </details>
+    <details>
+      <summary>How are the chord symbols chosen? Is there AI involved?</summary>
+      <div class="body"><p>No LLM anywhere. Harmonization is classic rule-based decoding: a Viterbi pass over the diatonic triads of the inferred key, scoring how well each chord explains the notes in each measure with sensible transitions between them. Deterministic and instant.</p></div>
+    </details>
+    <details>
+      <summary>Which time signatures and keys are supported?</summary>
+      <div class="body"><p>4/4, 3/4, and 2/4 time. Key is inferred automatically (Krumhansl–Kessler) across major keys and can be overridden from the toolbar's key selector at any time.</p></div>
+    </details>
+    <details>
+      <summary>Can I take the score into MuseScore or my DAW?</summary>
+      <div class="body"><p>Yes — export MusicXML for notation software (MuseScore, Finale, Sibelius, Dorico) and MIDI for DAWs. Both exports carry all parts.</p></div>
+    </details>
+  </div>
+</section>
+
+<section id="debug" class="debug">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="kicker">Debugging</span>
+      <h2>When the take sounds wrong</h2>
+    </div>
+    <details>
+      <summary><span><span class="sym">✗</span> The tempo is double / half what I hummed</span></summary>
+      <div class="body">
+        <span class="fix-label">Fix</span>
+        <p>Tempo-octave ambiguity is inherent to beat inference. Use the <strong>÷2</strong> / <strong>×2</strong> buttons next to the BPM, or tap the real tempo with <strong>Tap</strong>, then <strong>Re-quantize</strong>. Nothing is lost — quantization reruns from the raw recording.</p>
+      </div>
+    </details>
+    <details>
+      <summary><span><span class="sym">✗</span> No notes detected, or the preview is mostly gaps</span></summary>
+      <div class="body">
+        <span class="fix-label">Fix</span>
+        <p>Hum louder and closer to the mic, in a quiet room, using a sustained "doo" or "la" rather than whistling or breathy humming. Check the browser actually granted mic access to localhost, and that the right input device is selected at the OS level.</p>
+      </div>
+    </details>
+    <details>
+      <summary><span><span class="sym">✗</span> My second part is out of sync with the first</span></summary>
+      <div class="body">
+        <span class="fix-label">Fix</span>
+        <p>Record with headphones and start exactly on the count-in — the backing track is the grid. If the first part's tempo was wrong to begin with, fix its BPM first; every later part inherits that grid.</p>
+      </div>
+    </details>
+    <details>
+      <summary><span><span class="sym">✗</span> Notes come out in the wrong key or with odd accidentals</span></summary>
+      <div class="body">
+        <span class="fix-label">Fix</span>
+        <p>Key inference works from the notes it heard — a short or chromatic hum can mislead it. Pick the key explicitly in the toolbar's Key selector; the notation respells to match. Individual wrong notes can be nudged in the Part Editor.</p>
+      </div>
+    </details>
+    <details>
+      <summary><span><span class="sym">✗</span> Playback is silent</span></summary>
+      <div class="body">
+        <span class="fix-label">Fix</span>
+        <p>Browsers require a user gesture before audio starts — click Play rather than relying on a keyboard shortcut the first time. Also check per-part <strong>M</strong>ute/<strong>S</strong>olo states in the parts panel; a stray solo silences everything else.</p>
+      </div>
+    </details>
+    <details>
+      <summary><span><span class="sym">✗</span> I refreshed and want a clean slate, not my old score</span></summary>
+      <div class="body">
+        <span class="fix-label">Fix</span>
+        <p>Autosave restores the last score from localStorage by design. Use the reset/new-score control in the toolbar — or clear the site's localStorage in devtools — to start fresh.</p>
+      </div>
+    </details>
+    <details>
+      <summary><span><span class="sym">✗</span> The smoke test can't find a browser</span></summary>
+      <div class="body">
+        <span class="fix-label">Fix</span>
+        <p><code>scripts/smoke.e2e.mjs</code> launches Edge via <code>playwright-core</code>'s <code>msedge</code> channel — it needs Microsoft Edge installed (present on Windows by default). Make sure <code>npm run dev</code> is serving on 5173 first, or pass a URL: <code>node scripts/smoke.e2e.mjs http://localhost:4173</code>.</p>
+      </div>
+    </details>
+  </div>
+</section>
+
+<div class="wavediv" role="presentation">
+  <svg viewBox="0 0 560 44" fill="none" aria-hidden="true">
+    <path d="M0 22 q6 -16 12 0 t12 0 t12 0 t12 0 t12 0 t12 0 t12 0 t12 0 t12 0 t12 0 t12 0 t12 0" stroke="#E8467C" stroke-width="2" opacity=".65"/>
+    <g fill="#4F46E5">
+      <circle cx="330" cy="24" r="5"/><rect x="333.5" y="2" width="2" height="22" rx="1"/>
+      <circle cx="390" cy="16" r="5"/><rect x="393.5" y="6" width="2" height="22" rx="1"/>
+      <circle cx="450" cy="26" r="5"/><rect x="453.5" y="4" width="2" height="22" rx="1"/>
+    </g>
+  </svg>
+</div>
+
+<footer>
+  <div class="wrap">
+    <p><strong style="color:#fff">HumScore</strong> — the fastest path from a tune in your head to notes on a page.</p>
+    <p style="margin-top:.5rem"><a href="https://github.com/ItsRecharge/HumScore">Source on GitHub</a> · Vite · React 18 · TypeScript · pitchy · OpenSheetMusicDisplay · Tone.js</p>
+  </div>
+</footer>
+
+</body>
+</html>
